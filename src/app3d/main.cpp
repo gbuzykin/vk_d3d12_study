@@ -1,6 +1,5 @@
 #include "main_window.h"
 
-#include "interfaces/i_rendering_driver.h"
 #include "utils/dynamic_library.h"
 #include "utils/logger.h"
 
@@ -14,7 +13,9 @@ class App3DMainWindow : public MainWindow {
 
  private:
     std::unique_ptr<rel::IRenderingDriver> driver_;
+    rel::ISurface* surface_ = nullptr;
     rel::IDevice* device_ = nullptr;
+    rel::ISwapChain* swap_chain_ = nullptr;
 };
 
 int App3DMainWindow::init(int argc, char** argv) {
@@ -32,6 +33,9 @@ int App3DMainWindow::init(int argc, char** argv) {
 
     if (!createWindow(app_name, 1280, 1024)) { return -1; }
 
+    surface_ = driver_->createSurface(getWindowDescriptor());
+    if (!surface_) { return -1; }
+
     std::uint32_t device_index = 0;
     std::uint32_t device_count = driver_->getPhysicalDeviceCount();
     rel::DesiredDeviceCaps caps{};
@@ -41,12 +45,16 @@ int App3DMainWindow::init(int argc, char** argv) {
     }
 
     if (device_index == device_count) {
-        logError("no suitable physical Vulkan device");
+        logError("no suitable physical device");
         return -1;
     }
 
     device_ = driver_->createDevice(device_index, caps);
     if (!device_) { return -1; }
+
+    rel::SwapChainCreateInfo create_info{};
+    swap_chain_ = device_->createSwapChain(*surface_, create_info);
+    if (!swap_chain_) { return -1; }
 
     showWindow();
     return 0;

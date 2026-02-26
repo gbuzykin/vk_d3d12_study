@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <string_view>
+#include <type_traits>
 
 #if defined(WIN32)
 #    define APP3D_ENTRY_EXPORT extern "C" __declspec(dllexport)
@@ -20,6 +21,9 @@
 
 namespace app3d::rel {
 
+struct ISurface;
+struct ISwapChain;
+
 struct Version {
     std::uint32_t major;
     std::uint32_t minor;
@@ -32,11 +36,30 @@ struct ApplicationInfo {
 };
 
 struct DesiredDeviceCaps {
-    bool needs_compute = false;
+    bool needs_compute;
+};
+
+struct SwapChainCreateInfo {
+    std::uint32_t width;
+    std::uint32_t height;
+    std::uint32_t layer_count;
+};
+
+struct WindowHandle {
+    alignas(std::alignment_of_v<void*>) std::uint8_t v[2 * sizeof(void*)];
 };
 
 struct IDevice {
     virtual ~IDevice() = default;
+    virtual ISwapChain* createSwapChain(ISurface& surface, const SwapChainCreateInfo& create_info) = 0;
+};
+
+struct ISurface {
+    virtual ~ISurface() = default;
+};
+
+struct ISwapChain {
+    virtual ~ISwapChain() = default;
 };
 
 struct IRenderingDriver {
@@ -45,6 +68,7 @@ struct IRenderingDriver {
     virtual std::uint32_t getPhysicalDeviceCount() const = 0;
     virtual const char* getPhysicalDeviceName(std::uint32_t device_index) const = 0;
     virtual bool isSuitablePhysicalDevice(std::uint32_t device_index, const DesiredDeviceCaps& caps) const = 0;
+    virtual ISurface* createSurface(const WindowHandle& window_handle) = 0;
     virtual IDevice* createDevice(std::uint32_t device_index, const DesiredDeviceCaps& caps) = 0;
 };
 

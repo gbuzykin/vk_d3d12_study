@@ -19,6 +19,7 @@ class Device : public IDevice {
     VkDevice getHandle() { return device_; }
 
     //@{ IDevice
+    ISwapChain* createSwapChain(ISurface& surface, const SwapChainCreateInfo& create_info) override;
     //@}
 
  private:
@@ -26,6 +27,7 @@ class Device : public IDevice {
     PhysicalDevice& physical_device_;
     VkDevice device_ = VK_NULL_HANDLE;
     VkQueue graphics_queue_ = VK_NULL_HANDLE;
+    VkQueue present_queue_ = VK_NULL_HANDLE;
     VkQueue compute_queue_ = VK_NULL_HANDLE;
 };
 

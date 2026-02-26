@@ -11,6 +11,9 @@ namespace app3d::rel::vulkan {
 
 constexpr std::uint32_t INVALID_UINT32_VALUE = std::uint32_t(-1);
 
+class Surface;
+class Device;
+
 struct QueueInfo {
     std::uint32_t family_index = 0;
     std::vector<float> priorities;
@@ -32,7 +35,8 @@ class PhysicalDevice {
 
     const char* getName() const { return properties_.deviceName; }
     bool isExtensionSupported(const char* extension) const;
-    std::uint32_t findSuitableQueueFamily(VkQueueFlags flags) const;
+    const std::vector<VkQueueFamilyProperties>& getQueueFamilies() const { return queue_families_; }
+    std::uint32_t findSuitableQueueFamily(VkQueueFlags flags, std::uint32_t n = 0) const;
     bool isSuitableDevice(const DesiredDeviceCaps& caps) const;
 
     bool obtainExtensionProperties();
@@ -55,6 +59,8 @@ class RenderingDriver : public IRenderingDriver {
     ~RenderingDriver() override;
 
     bool isExtensionSupported(const char* extension) const;
+    std::vector<std::unique_ptr<Surface>>& getSurfaces() { return surfaces_; }
+    void destroySwapChains();
 
     VkInstance getHandle() { return instance_; }
 
@@ -63,6 +69,7 @@ class RenderingDriver : public IRenderingDriver {
     std::uint32_t getPhysicalDeviceCount() const override;
     const char* getPhysicalDeviceName(std::uint32_t device_index) const override;
     bool isSuitablePhysicalDevice(std::uint32_t device_index, const DesiredDeviceCaps& caps) const override;
+    ISurface* createSurface(const WindowHandle& window_handle) override;
     IDevice* createDevice(std::uint32_t device_index, const DesiredDeviceCaps& caps) override;
     //@}
 
@@ -71,7 +78,8 @@ class RenderingDriver : public IRenderingDriver {
     VkInstance instance_ = VK_NULL_HANDLE;
     std::vector<VkExtensionProperties> extensions_;
     std::vector<std::unique_ptr<PhysicalDevice>> physical_devices_;
-    std::unique_ptr<IDevice> device_;
+    std::vector<std::unique_ptr<Surface>> surfaces_;
+    std::unique_ptr<Device> device_;
 
     bool loadVulkanLoaderLibrary();
     bool obtainExtensionProperties();
