@@ -2,6 +2,7 @@
 
 #include "device.h"
 #include "object_destroyer.h"
+#include "surface.h"
 
 #include "utils/dynamic_library.h"
 #include "utils/logger.h"
@@ -37,7 +38,9 @@ RenderingDriver::RenderingDriver() {}
 
 RenderingDriver::~RenderingDriver() {
     if (device_) { device_->finalize(); }
+    destroySwapChains();
     device_.reset();
+    surfaces_.clear();
     ObjectDestroyer<VkInstance>::destroy(instance_);
     if (vulkan_library_) { freeDynamicLibrary(vulkan_library_); }
 }
@@ -46,6 +49,10 @@ bool RenderingDriver::isExtensionSupported(const char* extension) const {
     return std::ranges::any_of(extensions_, [extension](const auto& item) {
         return std::string_view(extension) == std::string_view(item.extensionName);
     });
+}
+
+void RenderingDriver::destroySwapChains() {
+    for (const auto& surface : surfaces_) { surface->destroySwapChain(); }
 }
 
 //@{ IRenderingDriver
@@ -61,6 +68,7 @@ bool RenderingDriver::init(const ApplicationInfo& app_info) {
     if (!createInstance(app_info)) { return false; }
     if (!loadPhysicalDeviceList()) { return false; }
 
+    surfaces_.reserve(4);
     return true;
 }
 
@@ -82,6 +90,13 @@ bool RenderingDriver::isSuitablePhysicalDevice(std::uint32_t device_index, const
     return physical_devices_[device_index]->isSuitableDevice(caps);
 }
 
+ISurface* RenderingDriver::createSurface(const WindowHandle& window_handle) {
+    auto surfaces = std::make_unique<Surface>(*this);
+    if (!surfaces->create(window_handle)) { return nullptr; }
+    surfaces_.emplace_back(std::move(surfaces));
+    return surfaces_.back().get();
+}
+
 IDevice* RenderingDriver::createDevice(std::uint32_t device_index, const DesiredDeviceCaps& caps) {
     if (device_) {
         logError(LOG_VK "device is already created");
@@ -93,7 +108,22 @@ IDevice* RenderingDriver::createDevice(std::uint32_t device_index, const Desired
         return nullptr;
     }
 
-    auto device = std::make_unique<Device>(*this, *physical_devices_[device_index]);
+    if (surfaces_.empty()) {
+        logError(LOG_VK "no rendering surfaces");
+        return nullptr;
+    }
+
+    auto& physical_device = *physical_devices_[device_index];
+
+    for (const auto& surface : surfaces_) {
+        if (!surface->loadCapabilities(physical_device)) { return nullptr; }
+        if (!surface->loadFormats(physical_device)) { return nullptr; }
+        if (!surface->loadPresentQueueFamilies(physical_device)) { return nullptr; }
+        if (!surface->loadPresentModes(physical_device)) { return nullptr; }
+        if (!surface->checkAndSelectSurfaceFeatures()) { return nullptr; }
+    }
+
+    auto device = std::make_unique<Device>(*this, physical_device);
     if (!device->create(caps)) { return nullptr; }
     device_ = std::move(device);
     return device_.get();
@@ -241,9 +271,13 @@ bool PhysicalDevice::isExtensionSupported(const char* extension) const {
     });
 }
 
-std::uint32_t PhysicalDevice::findSuitableQueueFamily(VkQueueFlags flags) const {
-    auto it = std::ranges::find_if(queue_families_, [flags](const auto& item) {
-        return item.queueCount > 0 && (item.queueFlags & flags) == flags;
+std::uint32_t PhysicalDevice::findSuitableQueueFamily(VkQueueFlags flags, std::uint32_t n) const {
+    auto it = std::ranges::find_if(queue_families_, [flags, &n](const auto& item) {
+        if (item.queueCount > 0 && (item.queueFlags & flags) == flags) {
+            if (n == 0) { return true; }
+            --n;
+        }
+        return false;
     });
     return it != queue_families_.end() ? std::uint32_t(it - queue_families_.begin()) : INVALID_UINT32_VALUE;
 }

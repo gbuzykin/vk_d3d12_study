@@ -1,6 +1,7 @@
 #pragma once
 
-#include <memory>
+#include "interfaces/i_rendering_driver.h"
+
 #include <string>
 
 namespace app3d {
@@ -27,6 +28,8 @@ class MainWindow {
  public:
     MainWindow();
     virtual ~MainWindow();
+
+    rel::WindowHandle getWindowDescriptor() const;
 
     bool createWindow(const std::string& title, std::uint32_t width, std::uint32_t height);
     void showWindow();
