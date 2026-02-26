@@ -78,6 +78,7 @@ include_directories(${APP3D_INCLUDE_DIR})
 add_compile_definitions(APP3D_USE_PLATFORM_${APP3D_USE_PLATFORM})
 
 add_subdirectory(src/utils)
+add_subdirectory(src/vulkan)
 
 file(GLOB_RECURSE APP3D_SRC_FILES src/app3d/*.h;src/app3d/*.cpp)
 
@@ -91,7 +92,7 @@ endif()
 
 add_executable(app3d ${APP3D_SRC_FILES} ${APP3D_PLATFORM_SRC_FILES})
 
-target_link_libraries(app3d PRIVATE app3d-utils)
+target_link_libraries(app3d PRIVATE app3d-utils app3d-vulkan)
 
 if(APP3D_USE_PLATFORM STREQUAL "XCB")
   target_link_libraries(app3d PRIVATE xcb)
