@@ -1,0 +1,3 @@
+[submodule "3rdparty/uxs"]
+	path = 3rdparty/uxs
+	url = ../uxs.git
