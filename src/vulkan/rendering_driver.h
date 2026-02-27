@@ -30,12 +30,15 @@ class PhysicalDevice {
 
     const char* getName() const { return properties_.deviceName; }
     bool isExtensionSupported(const char* extension) const;
-    std::uint32_t findSuitableQueueFamily(VkQueueFlags flags) const;
+    const std::vector<VkQueueFamilyProperties>& getQueueFamilies() const { return queue_families_; }
+    std::uint32_t findSuitableQueueFamily(VkQueueFlags flags, std::uint32_t n = 0) const;
     bool isSuitableDevice(const DesiredDeviceCaps& caps) const;
 
     bool obtainExtensionProperties();
     bool obtainFeaturesAndProperties();
     bool createLogicalDevice(const DeviceCreateInfo& create_info, VkDevice& logical_device);
+
+    VkPhysicalDevice getHandle() { return physical_device_; }
 
  private:
     VkPhysicalDevice physical_device_;
@@ -57,7 +60,8 @@ class RenderingDriver : public IRenderingDriver {
     std::uint32_t getPhysicalDeviceCount() const override;
     const char* getPhysicalDeviceName(std::uint32_t device_index) const override;
     bool isSuitablePhysicalDevice(std::uint32_t device_index, const DesiredDeviceCaps& caps) const override;
-    IDevice* createDevice(std::uint32_t device_index, const DesiredDeviceCaps& caps) override;
+    ISurface* createSurface(const WindowDescriptor& window_desc) override;
+    IDevice* createDevice(std::uint32_t device_index, ISurface& surface, const DesiredDeviceCaps& caps) override;
     //@}
 
  private:
@@ -66,6 +70,7 @@ class RenderingDriver : public IRenderingDriver {
     std::vector<VkExtensionProperties> extensions_;
     std::vector<std::unique_ptr<PhysicalDevice>> physical_devices_;
     std::unique_ptr<IDevice> device_;
+    std::unique_ptr<ISurface> surface_;
 
     bool loadVulkanLoaderLibrary();
     bool obtainExtensionProperties();

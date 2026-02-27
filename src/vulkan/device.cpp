@@ -1,6 +1,7 @@
 #include "device.h"
 
 #include "rendering_driver.h"
+#include "surface.h"
 
 #include "utils/print.h"
 
@@ -20,7 +21,7 @@ Device::~Device() {
     }
 }
 
-bool Device::create(const DesiredDeviceCaps& caps) {
+bool Device::create(Surface& surface, const DesiredDeviceCaps& caps) {
     DeviceCreateInfo create_info;
 
     create_info.extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
@@ -37,6 +38,16 @@ bool Device::create(const DesiredDeviceCaps& caps) {
 
     create_info.queue_infos.push_back({graphics_queue_family_index, {1.0f}});
 
+    const auto& present_queue_families = surface.getPresentQueueFamilies();
+    if (present_queue_families.empty()) {
+        printError("couldn't obtain presentation queue family index");
+        return false;
+    }
+
+    if (present_queue_families.front() != graphics_queue_family_index) {
+        create_info.queue_infos.push_back({present_queue_families.front(), {1.0f}});
+    }
+
     std::uint32_t compute_queue_family_index = 0;
 
     if (caps.needs_compute) {
@@ -46,7 +57,8 @@ bool Device::create(const DesiredDeviceCaps& caps) {
             return false;
         }
 
-        if (graphics_queue_family_index != compute_queue_family_index) {
+        if (compute_queue_family_index != graphics_queue_family_index &&
+            compute_queue_family_index != present_queue_families.front()) {
             create_info.queue_infos.push_back({compute_queue_family_index, {1.0f}});
         }
     }
@@ -54,6 +66,8 @@ bool Device::create(const DesiredDeviceCaps& caps) {
     if (!physical_device_.createLogicalDevice(create_info, device_)) { return false; }
 
     vkGetDeviceQueue(device_, graphics_queue_family_index, 0, &graphics_queue_);
+
+    vkGetDeviceQueue(device_, present_queue_families.front(), 0, &present_queue_);
 
     if (caps.needs_compute) { vkGetDeviceQueue(device_, compute_queue_family_index, 0, &compute_queue_); }
 

@@ -11,6 +11,11 @@ using namespace app3d;
 // --------------------------------------------------------
 // MainWindow class implementation
 
+struct WindowDescImpl {
+    HINSTANCE hinstance;
+    HWND hwnd;
+};
+
 struct MainWindow::ImplData {
     HINSTANCE hinstance = NULL;
     HWND hwnd = NULL;
@@ -38,6 +43,15 @@ MainWindow::~MainWindow() {
     auto& impl_data = *static_cast<ImplData*>(impl_data_.get());
     if (impl_data.hwnd) { ::DestroyWindow(impl_data.hwnd); }
     if (impl_data.hinstance) { ::UnregisterClassW(L"App3D Window Class", impl_data.hinstance); }
+}
+
+WindowDescriptor MainWindow::getWindowDescriptor() const {
+    WindowDescriptor window_desc{};
+    const auto& impl_data = *static_cast<const ImplData*>(impl_data_.get());
+    WindowDescImpl& win_desc_impl = *reinterpret_cast<WindowDescImpl*>(&window_desc.v);
+    win_desc_impl.hinstance = impl_data.hinstance;
+    win_desc_impl.hwnd = impl_data.hwnd;
+    return window_desc;
 }
 
 bool MainWindow::createWindow(const std::string& window_title, int width, int height) {

@@ -1,6 +1,7 @@
 #pragma once
 
-#include <cstdint>
+#include "window_descriptor.h"
+
 #include <memory>
 #include <string_view>
 
@@ -32,11 +33,15 @@ struct ApplicationInfo {
 };
 
 struct DesiredDeviceCaps {
-    bool needs_compute = false;
+    bool needs_compute;
 };
 
 struct IDevice {
     virtual ~IDevice() = default;
+};
+
+struct ISurface {
+    virtual ~ISurface() = default;
 };
 
 struct IRenderingDriver {
@@ -45,7 +50,8 @@ struct IRenderingDriver {
     virtual std::uint32_t getPhysicalDeviceCount() const = 0;
     virtual const char* getPhysicalDeviceName(std::uint32_t device_index) const = 0;
     virtual bool isSuitablePhysicalDevice(std::uint32_t device_index, const DesiredDeviceCaps& caps) const = 0;
-    virtual IDevice* createDevice(std::uint32_t device_index, const DesiredDeviceCaps& caps) = 0;
+    virtual ISurface* createSurface(const WindowDescriptor& window_desc) = 0;
+    virtual IDevice* createDevice(std::uint32_t device_index, ISurface& surface, const DesiredDeviceCaps& caps) = 0;
 };
 
 // Registered rendering driver descriptor

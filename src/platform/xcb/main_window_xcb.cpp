@@ -11,6 +11,11 @@ using namespace app3d;
 // --------------------------------------------------------
 // MainWindow class implementation
 
+struct WindowDescImpl {
+    xcb_connection_t* connection;
+    xcb_window_t window;
+};
+
 struct MainWindow::ImplData {
     xcb_connection_t* connection = nullptr;
     xcb_screen_t* screen = nullptr;
@@ -29,6 +34,15 @@ MainWindow::~MainWindow() {
         ::xcb_flush(impl_data.connection);
     }
     ::xcb_disconnect(impl_data.connection);
+}
+
+WindowDescriptor MainWindow::getWindowDescriptor() const {
+    WindowDescriptor window_desc{};
+    const auto& impl_data = *static_cast<const ImplData*>(impl_data_.get());
+    WindowDescImpl& win_desc_impl = *reinterpret_cast<WindowDescImpl*>(&window_desc.v);
+    win_desc_impl.connection = impl_data.connection;
+    win_desc_impl.window = impl_data.window;
+    return window_desc;
 }
 
 bool MainWindow::createWindow(const std::string& window_title, int width, int height) {

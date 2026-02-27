@@ -15,6 +15,7 @@ class App3DMainWindow : public MainWindow {
  private:
     std::unique_ptr<rel::IRenderingDriver> driver_;
     rel::IDevice* device_ = nullptr;
+    rel::ISurface* surface_ = nullptr;
 };
 
 int App3DMainWindow::init(int argc, char** argv) {
@@ -32,20 +33,23 @@ int App3DMainWindow::init(int argc, char** argv) {
 
     if (!createWindow(app_name, 1024, 768)) { return -1; }
 
+    surface_ = driver_->createSurface(getWindowDescriptor());
+    if (!surface_) { return -1; }
+
     std::uint32_t device_index = 0;
     std::uint32_t device_count = driver_->getPhysicalDeviceCount();
-    rel::DesiredDeviceCaps caps{};
+    rel::DesiredDeviceCaps caps;
 
     for (device_index = 0; device_index < device_count; ++device_index) {
         if (driver_->isSuitablePhysicalDevice(device_index, caps)) { break; }
     }
 
     if (device_index == device_count) {
-        logError("no suitable physical Vulkan device");
+        logError("no suitable physical device");
         return -1;
     }
 
-    device_ = driver_->createDevice(device_index, caps);
+    device_ = driver_->createDevice(device_index, *surface_, caps);
     if (!device_) { return -1; }
 
     showWindow();

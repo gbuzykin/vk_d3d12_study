@@ -1,6 +1,7 @@
 #include "rendering_driver.h"
 
 #include "device.h"
+#include "surface.h"
 
 #include "utils/dynamic_library.h"
 #include "utils/print.h"
@@ -12,6 +13,26 @@
 using namespace app3d;
 using namespace app3d::rel;
 using namespace app3d::rel::vulkan;
+
+struct WindowDescImpl {
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
+    HINSTANCE hinstance;
+    HWND hwnd;
+#elif defined(VK_USE_PLATFORM_XLIB_KHR)
+    Display* dpy;
+    Window window;
+#elif defined(VK_USE_PLATFORM_XCB_KHR)
+    xcb_connection_t* connection;
+    xcb_window_t window;
+#elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
+    wl_display* display;
+    wl_surface* surface;
+#endif
+};
+
+static_assert(sizeof(WindowDescriptor) >= sizeof(WindowDescImpl), "Too little WindowDescriptor size");
+static_assert(std::alignment_of_v<WindowDescriptor> >= std::alignment_of_v<WindowDescImpl>,
+              "Too little WindowDescriptor alignment");
 
 // --------------------------------------------------------
 // RenderingDriver class implementation
@@ -86,14 +107,65 @@ bool RenderingDriver::isSuitablePhysicalDevice(std::uint32_t device_index, const
     return physical_devices_[device_index]->isSuitableDevice(caps);
 }
 
-IDevice* RenderingDriver::createDevice(std::uint32_t device_index, const DesiredDeviceCaps& caps) {
+ISurface* RenderingDriver::createSurface(const WindowDescriptor& window_desc) {
+    VkSurfaceKHR surface = VK_NULL_HANDLE;
+    const WindowDescImpl& win_desc_impl = *reinterpret_cast<const WindowDescImpl*>(&window_desc.v);
+
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
+    VkWin32SurfaceCreateInfoKHR surface_create_info{
+        .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
+        .hinstance = win_desc_impl.hinstance,
+        .hwnd = win_desc_impl.hwnd,
+    };
+
+    VkResult result = vkCreateWin32SurfaceKHR(instance_, &surface_create_info, nullptr, &surface);
+#elif defined(VK_USE_PLATFORM_XLIB_KHR)
+    VkXlibSurfaceCreateInfoKHR surface_create_info{
+        .sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
+        .dpy = win_desc_impl.dpy,
+        .window = win_desc_impl.window,
+    };
+
+    VkResult result = vkCreateXlibSurfaceKHR(instance_, &surface_create_info, nullptr, &surface);
+#elif defined(VK_USE_PLATFORM_XCB_KHR)
+    VkXcbSurfaceCreateInfoKHR surface_create_info{
+        .sType = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR,
+        .connection = win_desc_impl.connection,
+        .window = win_desc_impl.window,
+    };
+
+    VkResult result = vkCreateXcbSurfaceKHR(instance_, &surface_create_info, nullptr, &surface);
+#elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
+    VkWaylandSurfaceCreateInfoKHR surface_create_info{
+        .sType = VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
+        .display = win_desc_impl.display,
+        .surface = win_desc_impl.surface,
+    };
+
+    VkResult result = vkCreateWaylandSurfaceKHR(instance_, &surface_create_info, nullptr, &surface);
+#endif
+
+    if (result != VK_SUCCESS || surface == VK_NULL_HANDLE) {
+        printError("couldn't create surface");
+        return nullptr;
+    }
+
+    // if (!surface->obtainCapabilities()) { return nullptr; }
+    // if (!surface->obtainPresentQueueFamilies()) { return nullptr; }
+    // if (!surface->obtainPresentModes()) { return nullptr; }
+
+    surface_ = std::make_unique<Surface>(*this, surface);
+    return surface_.get();
+}
+
+IDevice* RenderingDriver::creatDevice(std::uint32_t device_index, ISurface& surface, const DesiredDeviceCaps& caps) {
     if (device_index >= static_cast<std::uint32_t>(physical_devices_.size())) {
         logError("invalid physical device index");
         return nullptr;
     }
 
     auto logical_device = std::make_unique<Device>(*physical_devices_[device_index]);
-    if (!logical_device->create(caps)) { return nullptr; }
+    if (!logical_device->create(static_cast<Surface&>(surface), caps)) { return nullptr; }
 
     device_ = std::move(logical_device);
     return device_.get();
@@ -239,9 +311,13 @@ bool PhysicalDevice::isExtensionSupported(const char* extension) const {
     });
 }
 
-std::uint32_t PhysicalDevice::findSuitableQueueFamily(VkQueueFlags flags) const {
-    auto it = std::ranges::find_if(queue_families_, [flags](const auto& item) {
-        return item.queueCount > 0 && (item.queueFlags & flags) == flags;
+std::uint32_t PhysicalDevice::findSuitableQueueFamily(VkQueueFlags flags, std::uint32_t n) const {
+    auto it = std::ranges::find_if(queue_families_, [flags, &n](const auto& item) {
+        if (item.queueCount > 0 && (item.queueFlags & flags) == flags) {
+            if (n == 0) { return true; }
+            --n;
+        }
+        return false;
     });
     return it != queue_families_.end() ? static_cast<std::uint32_t>(it - queue_families_.begin()) :
                                          INVALID_UINT32_VALUE;
