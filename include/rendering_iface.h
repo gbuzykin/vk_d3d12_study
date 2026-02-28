@@ -36,12 +36,20 @@ struct DesiredDeviceCaps {
     bool needs_compute;
 };
 
+struct SwapChainCreateInfo {};
+
+struct ISwapChain;
 struct IDevice {
     virtual ~IDevice() = default;
+    virtual ISwapChain* createSwapChain(const SwapChainCreateInfo& create_info) = 0;
 };
 
 struct ISurface {
     virtual ~ISurface() = default;
+};
+
+struct ISwapChain {
+    virtual ~ISwapChain() = default;
 };
 
 struct IRenderingDriver {

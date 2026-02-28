@@ -21,7 +21,7 @@ Device::~Device() {
     }
 }
 
-bool Device::create(Surface& surface, const DesiredDeviceCaps& caps) {
+bool Device::create(const DesiredDeviceCaps& caps) {
     DeviceCreateInfo create_info;
 
     create_info.extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
@@ -72,4 +72,27 @@ bool Device::create(Surface& surface, const DesiredDeviceCaps& caps) {
     if (caps.needs_compute) { vkGetDeviceQueue(device_, compute_queue_family_index, 0, &compute_queue_); }
 
     return true;
+}
+
+ISwapChain* Device::createSwapChain(const SwapChainCreateInfo& create_info) {
+// Get caps
+if( 0xFFFFFFFF == surface_capabilities.currentExtent.width ) {
+size_of_images = { 640, 480 };
+if( size_of_images.width < surface_capabilities.minImageExtent.width ) {
+size_of_images.width = surface_capabilities.minImageExtent.width;
+} else if( size_of_images.width >
+surface_capabilities.maxImageExtent.width ) {
+size_of_images.width = surface_capabilities.maxImageExtent.width;
+}
+if( size_of_images.height < surface_capabilities.minImageExtent.height )
+{
+size_of_images.height = surface_capabilities.minImageExtent.height;
+} else if( size_of_images.height >
+surface_capabilities.maxImageExtent.height ) {
+size_of_images.height = surface_capabilities.maxImageExtent.height;
+}
+} else {
+size_of_images = surface_capabilities.currentExtent;
+}
+return true;
 }

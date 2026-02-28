@@ -16,6 +16,7 @@ class Device : public IDevice {
     bool create(Surface& surface, const DesiredDeviceCaps& caps);
 
     //@{ IDevice
+    ISwapChain* createSwapChain(const SwapChainCreateInfo& create_info) override;
     //@}
 
  private:
