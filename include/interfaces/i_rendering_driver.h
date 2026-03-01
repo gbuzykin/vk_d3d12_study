@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string_view>
 #include <type_traits>
 
@@ -45,13 +46,30 @@ struct SwapChainCreateInfo {
     std::uint32_t layer_count;
 };
 
+struct PresentImageInfo {
+    ISwapChain& swap_chain;
+    std::uint32_t image_index;
+};
+
 struct WindowHandle {
     alignas(std::alignment_of_v<void*>) std::uint8_t v[2 * sizeof(void*)];
+};
+
+struct SemaphoreHandle {
+    alignas(std::alignment_of_v<void*>) std::uint8_t v[sizeof(void*)];
+};
+
+struct FenceHandle {
+    alignas(std::alignment_of_v<void*>) std::uint8_t v[sizeof(void*)];
 };
 
 struct IDevice {
     virtual ~IDevice() = default;
     virtual ISwapChain* createSwapChain(ISurface& surface, const SwapChainCreateInfo& create_info) = 0;
+    virtual bool createSemaphores(std::span<SemaphoreHandle> semaphores) = 0;
+    virtual void destroySemaphores(std::span<const SemaphoreHandle> semaphores) = 0;
+    virtual bool createFences(std::span<FenceHandle> fences) = 0;
+    virtual void destroyFences(std::span<const FenceHandle> fences) = 0;
 };
 
 struct ISurface {
@@ -60,6 +78,10 @@ struct ISurface {
 
 struct ISwapChain {
     virtual ~ISwapChain() = default;
+    virtual bool acquireImage(std::uint64_t timeout, std::uint32_t& image_index, SemaphoreHandle* semaphore,
+                              FenceHandle* fence) = 0;
+    virtual bool queuePresent(std::uint64_t timeout, std::span<const FenceHandle> semaphores,
+                              std::span<const PresentImageInfo> images) = 0;
 };
 
 struct IRenderingDriver {

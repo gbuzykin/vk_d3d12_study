@@ -93,4 +93,16 @@ ISwapChain* Device::createSwapChain(ISurface& surface, const SwapChainCreateInfo
     return static_cast<Surface&>(surface).createSwapChain(*this, create_info);
 }
 
+bool Device::createSemaphores(std::span<SemaphoreHandle> semaphores) {
+    // for (auto& semaphore : semaphores) { vkCreateSemaphore(device_, &semaphore); }
+
+    return true;
+}
+
+void Device::destroySemaphores(std::span<const SemaphoreHandle> semaphores) {}
+
+bool Device::createFences(std::span<FenceHandle> fences) { return false; }
+
+void Device::destroyFences(std::span<const FenceHandle> fences) {}
+
 //@}

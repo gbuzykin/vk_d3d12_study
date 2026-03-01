@@ -20,6 +20,10 @@ class Device : public IDevice {
 
     //@{ IDevice
     ISwapChain* createSwapChain(ISurface& surface, const SwapChainCreateInfo& create_info) override;
+    bool createSemaphores(std::span<SemaphoreHandle> semaphores) override;
+    void destroySemaphores(std::span<const SemaphoreHandle> semaphores) override;
+    bool createFences(std::span<FenceHandle> fences) override;
+    void destroyFences(std::span<const FenceHandle> fences) override;
     //@}
 
  private:

@@ -70,3 +70,17 @@ bool SwapChain::createImageViews(VkFormat format, VkImageAspectFlags aspectFlags
 void SwapChain::destroyImageViews() {
     for (const auto& image_view : image_views_) { vkDestroyImageView(device_.getHandle(), image_view, nullptr); }
 }
+
+//@{ ISwapChain
+
+bool SwapChain::acquireImage(std::uint64_t timeout, std::uint32_t& image_index, SemaphoreHandle* semaphore,
+                             FenceHandle* fence) {
+    return false;
+}
+
+bool SwapChain::queuePresent(std::uint64_t timeout, std::span<const FenceHandle> semaphores,
+                             std::span<const PresentImageInfo> images) {
+    return false;
+}
+
+//@}

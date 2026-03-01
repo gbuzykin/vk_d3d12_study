@@ -23,6 +23,10 @@ class SwapChain : public ISwapChain {
     VkSwapchainKHR getHandle() { return swap_chain_; }
 
     //@{ ISwapChain
+    bool acquireImage(std::uint64_t timeout, std::uint32_t& image_index, SemaphoreHandle* semaphore,
+                      FenceHandle* fence) override;
+    bool queuePresent(std::uint64_t timeout, std::span<const FenceHandle> semaphores,
+                      std::span<const PresentImageInfo> images) override;
     //@}
 
  private:
