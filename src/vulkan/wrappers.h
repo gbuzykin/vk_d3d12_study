@@ -2,7 +2,9 @@
 
 #include "vulkan_api.h"
 
+#include <cassert>
 #include <cstdint>
+#include <span>
 
 namespace app3d::rel::vulkan {
 
@@ -37,6 +39,31 @@ struct Wrapper<VkImageMemoryBarrier> {
                     .baseArrayLayer = 0,
                     .layerCount = VK_REMAINING_ARRAY_LAYERS,
                 },
+        };
+    }
+};
+
+template<>
+struct Wrapper<VkSubpassDescription> {
+    VkPipelineBindPoint pipeline_type;
+    std::span<const VkAttachmentReference> input_attachments;
+    std::span<const VkAttachmentReference> color_attachments;
+    std::span<const VkAttachmentReference> resolve_attachments;
+    const VkAttachmentReference* depth_stencil_attachment;
+    std::span<const std::uint32_t> preserve_attachments;
+    static VkSubpassDescription unwrap(Wrapper wrapper) {
+        assert(wrapper.resolve_attachments.empty() ||
+               wrapper.resolve_attachments.size() == wrapper.color_attachments.size());
+        return {
+            .pipelineBindPoint = wrapper.pipeline_type,
+            .inputAttachmentCount = std::uint32_t(wrapper.input_attachments.size()),
+            .pInputAttachments = wrapper.input_attachments.data(),
+            .colorAttachmentCount = std::uint32_t(wrapper.color_attachments.size()),
+            .pColorAttachments = wrapper.color_attachments.data(),
+            .pResolveAttachments = !wrapper.resolve_attachments.empty() ? wrapper.resolve_attachments.data() : nullptr,
+            .pDepthStencilAttachment = wrapper.depth_stencil_attachment,
+            .preserveAttachmentCount = std::uint32_t(wrapper.preserve_attachments.size()),
+            .pPreserveAttachments = wrapper.preserve_attachments.data(),
         };
     }
 };
