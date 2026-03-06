@@ -102,6 +102,11 @@ install(TARGETS app3d RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
                               COMPONENT binaries)
 install_win32_pdb(app3d)
 
+install(
+  DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/shaders
+  DESTINATION ${CMAKE_INSTALL_BINDIR}
+  COMPONENT binaries)
+
 # ##############################################################################
 # Auxiliary
 

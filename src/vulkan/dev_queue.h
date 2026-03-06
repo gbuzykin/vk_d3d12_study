@@ -22,8 +22,8 @@ class DevQueue {
                               std::span<const VkCommandBuffer> command_buffers,
                               std::span<const VkSemaphore> signal_semaphores, VkFence fence);
 
-    bool presentImages(std::span<const VkSemaphore> rendering_semaphores,
-                       MultiSpan<const VkSwapchainKHR, const std::uint32_t> images_to_present);
+    RenderTargetResult presentImages(std::span<const VkSemaphore> rendering_semaphores,
+                                     MultiSpan<const VkSwapchainKHR, const std::uint32_t> images_to_present);
 
     VkQueue operator~() { return queue_; }
 

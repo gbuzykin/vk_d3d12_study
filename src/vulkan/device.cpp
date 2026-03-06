@@ -8,8 +8,11 @@
 
 #include "utils/logger.h"
 
+#include <uxs/io/filebuf.h>
+
 #include <algorithm>
 #include <array>
+#include <cstring>
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -28,8 +31,14 @@ Device::Device(RenderingDriver& instance, PhysicalDevice& physical_device)
     : instance_(instance), physical_device_(physical_device) {}
 
 Device::~Device() {
-    ObjectDestroyer<VkCommandPool>::destroy(device_, command_pool_);
+    ObjectDestroyer<VkDeviceMemory>::destroy(device_, vertex_buffer_memory_);
+    ObjectDestroyer<VkBuffer>::destroy(device_, vertex_buffer_);
+    for (const auto& pipeline : graphics_pipelines_) { ObjectDestroyer<VkPipeline>::destroy(device_, pipeline); }
+    ObjectDestroyer<VkPipelineLayout>::destroy(device_, pipeline_layout_);
+    ObjectDestroyer<VkShaderModule>::destroy(device_, vertex_shader_module_);
+    ObjectDestroyer<VkShaderModule>::destroy(device_, fragment_shader_module_);
     ObjectDestroyer<VkRenderPass>::destroy(device_, render_pass_);
+    ObjectDestroyer<VkCommandPool>::destroy(device_, command_pool_);
     ObjectDestroyer<VkSemaphore>::destroy(device_, sem_image_acquired_);
     ObjectDestroyer<VkSemaphore>::destroy(device_, sem_ready_to_present_);
     ObjectDestroyer<VkFence>::destroy(device_, fence_drawing_);
@@ -182,7 +191,7 @@ bool Device::prepareTestScene(ISurface& surface) {
     command_buffers_.resize(1, VK_NULL_HANDLE);
     if (!allocateCommandBuffers(command_pool_, VK_COMMAND_BUFFER_LEVEL_PRIMARY, command_buffers_)) { return false; }
 
-    command_buffer_ = CommandBuffer{command_buffers_[0]};
+    command_buffer_ = CommandBuffer::wrap(command_buffers_[0]);
 
     // Render pass
 
@@ -237,26 +246,184 @@ bool Device::prepareTestScene(ISurface& surface) {
         return false;
     }
 
+    // Graphics pipeline
+
+    std::vector<std::uint8_t> vertex_shader_spirv;
+    if (uxs::bfilebuf ifile("shaders/simple/shader.vert.spv", "r"); ifile) {
+        vertex_shader_spirv.resize(ifile.seek(0, uxs::seekdir::end));
+        ifile.seek(0);
+        vertex_shader_spirv.resize(ifile.read(vertex_shader_spirv));
+    }
+
+    std::vector<std::uint8_t> fragment_shader_spirv;
+    if (uxs::bfilebuf ifile("shaders/simple/shader.frag.spv", "r"); ifile) {
+        fragment_shader_spirv.resize(ifile.seek(0, uxs::seekdir::end));
+        ifile.seek(0);
+        fragment_shader_spirv.resize(ifile.read(fragment_shader_spirv));
+    }
+
+    if (!createShaderModule(vertex_shader_spirv, vertex_shader_module_)) { return false; }
+    if (!createShaderModule(fragment_shader_spirv, fragment_shader_module_)) { return false; }
+
+    const std::array shader_stage_create_infos{
+        Wrapper<VkPipelineShaderStageCreateInfo>::unwrap({
+            .shader_stage = VK_SHADER_STAGE_VERTEX_BIT,
+            .shader_module = vertex_shader_module_,
+            .entry_point_name = "main",
+        }),
+        Wrapper<VkPipelineShaderStageCreateInfo>::unwrap({
+            .shader_stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .shader_module = fragment_shader_module_,
+            .entry_point_name = "main",
+        }),
+    };
+
+    const std::array vertex_input_binding_descriptions{
+        VkVertexInputBindingDescription{
+            .binding = 0,
+            .stride = 3 * sizeof(float),
+            .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+        },
+    };
+    const std::array vertex_attribute_descriptions{
+        VkVertexInputAttributeDescription{
+            .location = 0,
+            .binding = 0,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
+            .offset = 0,
+        },
+    };
+    const auto vertex_input_state_create_info = Wrapper<VkPipelineVertexInputStateCreateInfo>::unwrap({
+        .binding_descriptions = vertex_input_binding_descriptions,
+        .attribute_descriptions = vertex_attribute_descriptions,
+    });
+
+    const auto input_assembly_state_create_info = Wrapper<VkPipelineInputAssemblyStateCreateInfo>::unwrap({
+        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
+        .primitive_restart_enable = false,
+    });
+
+    const std::array<VkViewport, 1> viewports{};
+    const std::array<VkRect2D, 1> scissors{};
+    const auto viewport_state_create_info = Wrapper<VkPipelineViewportStateCreateInfo>::unwrap({
+        .viewports = viewports,
+        .scissors = scissors,
+    });
+
+    const auto rasterization_state_create_info = Wrapper<VkPipelineRasterizationStateCreateInfo>::unwrap({
+        .depth_clamp_enable = false,
+        .rasterizer_discard_enable = false,
+        .polygon_mode = VK_POLYGON_MODE_FILL,
+        .culling_mode = VK_CULL_MODE_BACK_BIT,
+        .front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+        .depth_bias_enable = false,
+        .depth_bias_constant_factor = 0.0f,
+        .depth_bias_clamp = 0.0f,
+        .depth_bias_slope_factor = 0.0f,
+        .line_width = 1.0f,
+    });
+
+    const auto multisample_state_create_info = Wrapper<VkPipelineMultisampleStateCreateInfo>::unwrap({
+        .sample_count = VK_SAMPLE_COUNT_1_BIT,
+        .per_sample_shading_enable = false,
+        .min_sample_shading = 0.0f,
+        .alpha_to_coverage_enable = false,
+        .alpha_to_one_enable = false,
+    });
+
+    const std::array attachment_blend_states{
+        VkPipelineColorBlendAttachmentState{
+            .blendEnable = false,
+            .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
+            .dstColorBlendFactor = VK_BLEND_FACTOR_ONE,
+            .colorBlendOp = VK_BLEND_OP_ADD,
+            .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+            .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+            .alphaBlendOp = VK_BLEND_OP_ADD,
+            .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT |
+                              VK_COLOR_COMPONENT_A_BIT,
+        },
+    };
+    const auto blend_state_create_info = Wrapper<VkPipelineColorBlendStateCreateInfo>::unwrap({
+        .logic_op_enable = false,
+        .logic_op = VK_LOGIC_OP_COPY,
+        .attachment_blend_states = attachment_blend_states,
+        .blend_constants = {1.0f, 1.0f, 1.0f, 1.0f},
+    });
+
+    const std::array dynamic_states{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    const auto dynamic_state_create_info = Wrapper<VkPipelineDynamicStateCreateInfo>::unwrap({
+        .dynamic_states = dynamic_states,
+    });
+
+    if (!createPipelineLayout({}, {}, pipeline_layout_)) { return false; }
+
+    const std::array graphics_pipeline_create_infos{
+        Wrapper<VkGraphicsPipelineCreateInfo>::unwrap({
+            .shader_stage_create_infos = shader_stage_create_infos,
+            .vertex_input_state_create_info = &vertex_input_state_create_info,
+            .input_assembly_state_create_info = &input_assembly_state_create_info,
+            .viewport_state_create_info = &viewport_state_create_info,
+            .rasterization_state_create_info = &rasterization_state_create_info,
+            .multisample_state_create_info = &multisample_state_create_info,
+            .blend_state_create_info = &blend_state_create_info,
+            .dynamic_state_creat_info = &dynamic_state_create_info,
+            .pipeline_layout = pipeline_layout_,
+            .render_pass = render_pass_,
+            .base_pipeline_index = -1,
+        }),
+    };
+
+    graphics_pipelines_.resize(1, VK_NULL_HANDLE);
+    if (!createGraphicsPipelines({graphics_pipeline_create_infos, graphics_pipelines_}, VK_NULL_HANDLE)) {
+        return false;
+    }
+
+    graphics_pipeline_ = graphics_pipelines_[0];
+
+    // Vertex data
+    std::vector<float> vertices{0.0f, -0.75f, 0.0f, -0.75f, 0.75f, 0.0f, 0.75f, 0.75f, 0.0f};
+
+    if (!createBuffer(sizeof(vertices[0]) * vertices.size(),
+                      VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertex_buffer_)) {
+        return false;
+    }
+
+    if (!allocateAndBindMemoryObjectToBuffer(vertex_buffer_, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                                             vertex_buffer_memory_)) {
+        return false;
+    }
+
+    if (!writeToDeviceLocalMemory(graphics_queue_, command_buffer_, sizeof(vertices[0]) * vertices.size(), &vertices[0],
+                                  vertex_buffer_, 0, 0, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
+                                  VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, {})) {
+        return false;
+    }
+
     return true;
 }
 
-bool Device::renderTestScene(ISwapChain& swap_chain) {
-    if (!waitForFences(std::array{fence_drawing_}, false, 5000000000)) { return false; }
-
-    if (!resetFences(std::array{fence_drawing_})) { return false; }
+RenderTargetResult Device::renderTestScene(ISwapChain& swap_chain) {
+    if (!waitForFences(std::array{fence_drawing_}, false, 5000000000)) { return RenderTargetResult::FAILED; }
 
     auto& swap_chain_impl = static_cast<SwapChain&>(swap_chain);
 
     std::uint32_t image_index = 0;
-    if (!swap_chain_impl.acquireImage(2000000000, sem_image_acquired_, VK_NULL_HANDLE, image_index)) { return false; }
+    if (const auto render_target_result = swap_chain_impl.acquireImage(2000000000, sem_image_acquired_, VK_NULL_HANDLE,
+                                                                       image_index);
+        render_target_result != RenderTargetResult::SUCCESS) {
+        return render_target_result;
+    }
 
     ObjectDestroyer<VkFramebuffer> framebuffer(device_);
     if (!createFramebuffer(render_pass_, std::array{swap_chain_impl.getImageView(image_index)},
                            swap_chain_impl.getImageSize(), 1, ~framebuffer)) {
-        return false;
+        return RenderTargetResult::FAILED;
     }
 
-    if (!command_buffer_.beginCommandBuffer(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) { return false; }
+    if (!command_buffer_.beginCommandBuffer(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) {
+        return RenderTargetResult::FAILED;
+    }
 
     if (present_queue_.getFamilyIndex() != graphics_queue_.getFamilyIndex()) {
         command_buffer_.setImageMemoryBarrier(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -278,8 +445,25 @@ bool Device::renderTestScene(ISwapChain& swap_chain) {
     // Drawing
 
     command_buffer_.beginRenderPass(render_pass_, ~framebuffer, swap_chain_impl.getImageRect(),
-                                    std::array{VkClearValue{.color = {{0.2f, 0.5f, 0.8f, 1.0f}}}},
+                                    std::array{VkClearValue{.color = {{0.1f, 0.2f, 0.3f, 1.0f}}}},
                                     VK_SUBPASS_CONTENTS_INLINE);
+
+    command_buffer_.bindPipelineObject(VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline_);
+
+    command_buffer_.setViewportState(0, std::array{VkViewport{
+                                            .x = 0.0f,
+                                            .y = 0.0f,
+                                            .width = float(swap_chain_impl.getImageWidth()),
+                                            .height = float(swap_chain_impl.getImageHeight()),
+                                            .minDepth = 0.0f,
+                                            .maxDepth = 1.0f,
+                                        }});
+
+    command_buffer_.setScissorState(0, std::array{VkRect2D{.offset = {0, 0}, .extent = swap_chain_impl.getImageSize()}});
+
+    command_buffer_.bindVertexBuffers(0, {std::array{vertex_buffer_}, std::array{VkDeviceSize(0)}});
+
+    command_buffer_.drawGeometry(3, 1, 0, 0);
 
     command_buffer_.endRenderPass();
 
@@ -300,20 +484,23 @@ bool Device::renderTestScene(ISwapChain& swap_chain) {
                                               });
     }
 
-    if (!command_buffer_.endCommandBuffer()) { return false; }
+    if (!command_buffer_.endCommandBuffer()) { return RenderTargetResult::FAILED; }
+
+    if (!resetFences(std::array{fence_drawing_})) { return RenderTargetResult::FAILED; }
 
     if (!graphics_queue_.submitCommandBuffers(
             {std::array{sem_image_acquired_}, std::array{VkPipelineStageFlags(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT)}},
             std::array{~command_buffer_}, std::array{sem_ready_to_present_}, fence_drawing_)) {
-        return false;
+        return RenderTargetResult::FAILED;
     }
 
-    if (!present_queue_.presentImages(std::array{sem_ready_to_present_},
-                                      {std::array{~swap_chain_impl}, std::array{image_index}})) {
-        return false;
+    if (const auto render_target_result = present_queue_.presentImages(
+            std::array{sem_ready_to_present_}, {std::array{~swap_chain_impl}, std::array{image_index}});
+        render_target_result != RenderTargetResult::SUCCESS) {
+        return render_target_result;
     }
 
-    return true;
+    return RenderTargetResult::SUCCESS;
 }
 
 //@}
@@ -343,26 +530,20 @@ bool Device::createFence(bool signaled, VkFence& fence) {
 }
 
 bool Device::waitForFences(std::span<const VkFence> fences, VkBool32 wait_for_all, std::uint64_t timeout) {
-    if (fences.empty()) { return true; }
-
     VkResult result = vkWaitForFences(device_, std::uint32_t(fences.size()), fences.data(), wait_for_all, timeout);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "waiting for fence failed");
         return false;
     }
-
     return true;
 }
 
 bool Device::resetFences(std::span<const VkFence> fences) {
-    if (fences.empty()) { return true; }
-
     VkResult result = vkResetFences(device_, std::uint32_t(fences.size()), fences.data());
     if (result != VK_SUCCESS) {
         logError(LOG_VK "error occurred when tried to reset fences");
         return false;
     }
-
     return true;
 }
 
@@ -388,15 +569,15 @@ bool Device::createRenderPass(std::span<const VkAttachmentDescription> attachmen
     return true;
 }
 
-bool Device::createFramebuffer(VkRenderPass render_pass, std::span<const VkImageView> attachments, VkExtent2D size,
+bool Device::createFramebuffer(VkRenderPass render_pass, std::span<const VkImageView> attachments, VkExtent2D extent,
                                std::uint32_t layers, VkFramebuffer& framebuffer) {
     const VkFramebufferCreateInfo create_info{
         .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
         .renderPass = render_pass,
         .attachmentCount = std::uint32_t(attachments.size()),
         .pAttachments = attachments.data(),
-        .width = size.width,
-        .height = size.height,
+        .width = extent.width,
+        .height = extent.height,
         .layers = layers,
     };
 
@@ -443,6 +624,196 @@ bool Device::allocateCommandBuffers(VkCommandPool command_pool, VkCommandBufferL
     return true;
 }
 
+bool Device::createShaderModule(std::span<std::uint8_t> source_code, VkShaderModule& shader_module) {
+    const VkShaderModuleCreateInfo create_info{
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = source_code.size(),
+        .pCode = reinterpret_cast<const std::uint32_t*>(source_code.data()),
+    };
+
+    VkResult result = vkCreateShaderModule(device_, &create_info, nullptr, &shader_module);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't create a shader module");
+        return false;
+    }
+
+    return true;
+}
+
+bool Device::createPipelineLayout(std::span<const VkDescriptorSetLayout> descriptor_set_layouts,
+                                  std::span<const VkPushConstantRange> push_constant_ranges,
+                                  VkPipelineLayout& pipeline_layout) {
+    const VkPipelineLayoutCreateInfo create_info{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = std::uint32_t(descriptor_set_layouts.size()),
+        .pSetLayouts = descriptor_set_layouts.data(),
+        .pushConstantRangeCount = std::uint32_t(push_constant_ranges.size()),
+        .pPushConstantRanges = push_constant_ranges.data(),
+    };
+
+    VkResult result = vkCreatePipelineLayout(device_, &create_info, nullptr, &pipeline_layout);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't create pipeline layout");
+        return false;
+    }
+
+    return true;
+}
+
+bool Device::createGraphicsPipelines(MultiSpan<const VkGraphicsPipelineCreateInfo, VkPipeline> pipelines,
+                                     VkPipelineCache pipeline_cache) {
+    VkResult result = vkCreateGraphicsPipelines(device_, pipeline_cache, std::uint32_t(pipelines.size()),
+                                                pipelines.data<0>(), nullptr, pipelines.data<1>());
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't create a graphics pipeline");
+        return false;
+    }
+    return true;
+}
+
+bool Device::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer& buffer) {
+    const VkBufferCreateInfo create_info{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = size,
+        .usage = usage,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    };
+
+    VkResult result = vkCreateBuffer(device_, &create_info, nullptr, &buffer);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't create a buffer");
+        return false;
+    }
+
+    return true;
+}
+
+bool Device::allocateAndBindMemoryObjectToBuffer(VkBuffer buffer, VkMemoryPropertyFlagBits desired_properties,
+                                                 VkDeviceMemory& memory_object) {
+    VkMemoryRequirements memory_requirements{};
+    vkGetBufferMemoryRequirements(device_, buffer, &memory_requirements);
+
+    const auto& memory_properties = getPhysicalDevice().getMemoryProperties();
+
+    memory_object = VK_NULL_HANDLE;
+
+    for (std::uint32_t type = 0; type < memory_properties.memoryTypeCount; ++type) {
+        if ((memory_requirements.memoryTypeBits & (1U << type)) &&
+            (memory_properties.memoryTypes[type].propertyFlags & desired_properties) == desired_properties) {
+            const VkMemoryAllocateInfo allocate_info{
+                .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+                .allocationSize = memory_requirements.size,
+                .memoryTypeIndex = type,
+            };
+
+            VkResult result = vkAllocateMemory(device_, &allocate_info, nullptr, &memory_object);
+            if (result == VK_SUCCESS) { break; }
+        }
+    }
+
+    if (memory_object == VK_NULL_HANDLE) {
+        logError(LOG_VK "couldn't allocate memory for a buffer");
+        return false;
+    }
+
+    VkResult result = vkBindBufferMemory(device_, buffer, memory_object, 0);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't bind memory object to a buffer");
+        return false;
+    }
+
+    return true;
+}
+
+bool Device::writeToDeviceLocalMemory(DevQueue& queue, CommandBuffer& command_buffer, VkDeviceSize data_size,
+                                      void* data, VkBuffer dst, VkDeviceSize dst_offset,
+                                      VkAccessFlags dst_current_access, VkAccessFlags dst_new_access,
+                                      VkPipelineStageFlags dst_generating_stages,
+                                      VkPipelineStageFlags dst_consuming_stages,
+                                      std::span<const VkSemaphore> signal_semaphores) {
+    ObjectDestroyer<VkBuffer> staging_buffer(device_);
+    if (!createBuffer(data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, ~staging_buffer)) { return false; }
+
+    ObjectDestroyer<VkDeviceMemory> memory_object(device_);
+    if (!allocateAndBindMemoryObjectToBuffer(~staging_buffer, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, ~memory_object)) {
+        return false;
+    }
+
+    if (!writeToHostVisibleMemory(~memory_object, 0, data_size, data)) { return false; }
+
+    if (!command_buffer.beginCommandBuffer(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) { return false; }
+
+    command_buffer.setBufferMemoryBarrier(dst_generating_stages, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                          std::array{
+                                              Wrapper<VkBufferMemoryBarrier>::unwrap({
+                                                  .buffer = dst,
+                                                  .current_access = dst_current_access,
+                                                  .new_access = VK_ACCESS_TRANSFER_WRITE_BIT,
+                                                  .current_queue_family = VK_QUEUE_FAMILY_IGNORED,
+                                                  .new_queue_family = VK_QUEUE_FAMILY_IGNORED,
+                                              }),
+                                          });
+
+    command_buffer.copyDataBetweenBuffers(~staging_buffer, dst,
+                                          std::array{
+                                              VkBufferCopy{.srcOffset = 0, .dstOffset = dst_offset, .size = data_size},
+                                          });
+
+    command_buffer.setBufferMemoryBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, dst_consuming_stages,
+                                          std::array{
+                                              Wrapper<VkBufferMemoryBarrier>::unwrap({
+                                                  .buffer = dst,
+                                                  .current_access = VK_ACCESS_TRANSFER_WRITE_BIT,
+                                                  .new_access = dst_new_access,
+                                                  .current_queue_family = VK_QUEUE_FAMILY_IGNORED,
+                                                  .new_queue_family = VK_QUEUE_FAMILY_IGNORED,
+                                              }),
+                                          });
+
+    if (!command_buffer.endCommandBuffer()) { return false; }
+
+    ObjectDestroyer<VkFence> fence(device_);
+    if (!createFence(false, ~fence)) { return false; }
+
+    if (!queue.submitCommandBuffers({}, std::array{~command_buffer}, signal_semaphores, ~fence)) { return false; }
+
+    if (!waitForFences(std::array{~fence}, VK_FALSE, 500000000)) { return false; }
+
+    return true;
+}
+
+bool MappedMemory::map(VkDeviceSize offset, VkDeviceSize data_size) {
+    VkResult result = vkMapMemory(device_, memory_object_, offset, data_size, 0, &ptr_);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't map memory object");
+        return false;
+    }
+    return true;
+}
+
+bool Device::writeToHostVisibleMemory(VkDeviceMemory memory_object, VkDeviceSize offset, VkDeviceSize data_size,
+                                      void* data) {
+    MappedMemory mapped_memory(device_, memory_object);
+    if (!mapped_memory.map(offset, data_size)) { return false; }
+
+    std::memcpy(mapped_memory.ptr(), data, std::size_t(data_size));
+
+    const std::array memory_ranges{VkMappedMemoryRange{
+        .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+        .memory = memory_object,
+        .offset = offset,
+        .size = VK_WHOLE_SIZE,
+    }};
+
+    VkResult result = vkFlushMappedMemoryRanges(device_, std::uint32_t(memory_ranges.size()), memory_ranges.data());
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't flush mapped memory");
+        return false;
+    }
+
+    return true;
+}
+
 // --------------------------------------------------------
 // CommandBuffer class implementation
 
@@ -470,13 +841,6 @@ bool CommandBuffer::endCommandBuffer() {
         return false;
     }
     return true;
-}
-
-void CommandBuffer::setImageMemoryBarrier(VkPipelineStageFlags generating_stages, VkPipelineStageFlags consuming_stages,
-                                          std::span<const VkImageMemoryBarrier> image_memory_barriers) {
-    if (image_memory_barriers.empty()) { return; }
-    vkCmdPipelineBarrier(command_buffer_, generating_stages, consuming_stages, 0, 0, nullptr, 0, nullptr,
-                         std::uint32_t(image_memory_barriers.size()), image_memory_barriers.data());
 }
 
 void CommandBuffer::beginRenderPass(VkRenderPass render_pass, VkFramebuffer framebuffer, VkRect2D render_area,

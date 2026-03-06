@@ -3,6 +3,7 @@
 #include "utils/dynamic_library.h"
 #include "utils/logger.h"
 
+#include <chrono>
 #include <exception>
 
 using namespace app3d;
@@ -12,20 +13,35 @@ class App3DMainWindow : public MainWindow {
     int init(int argc, char** argv);
 
     bool onIdle(int& ret_code) override {
-        const bool result = device_->renderTestScene(*swap_chain_);
-        if (result) { return true; }
-        ret_code = -1;
-        return false;
+        if (const auto result = device_->renderTestScene(*swap_chain_);
+            result != rel::RenderTargetResult::SUCCESS && result != rel::RenderTargetResult::OUT_OF_DATE) {
+            ret_code = -1;
+            return false;
+        }
+        const auto time_now = std::chrono::system_clock::now();
+        ++frame_counter_;
+        const double delta = std::chrono::duration<double>(time_now - time_fps_last_).count();
+        if (delta > 2) {
+            logInfo("fps = {}", frame_counter_ / delta);
+            frame_counter_ = 0;
+            time_fps_last_ = time_now;
+        }
+        return true;
     }
 
     bool onResize(int& ret_code) override {
         swap_chain_ = device_->createSwapChain(*surface_, swap_chain_create_info_);
-        if (swap_chain_) { return true; }
-        ret_code = -1;
-        return false;
+        if (!swap_chain_) {
+            ret_code = -1;
+            return false;
+        }
+        return true;
     }
 
  private:
+    std::uint64_t frame_counter_ = 0;
+    std::chrono::system_clock::time_point time_fps_last_{};
+
     std::unique_ptr<rel::IRenderingDriver> driver_;
     rel::ISurface* surface_ = nullptr;
 
@@ -75,6 +91,7 @@ int App3DMainWindow::init(int argc, char** argv) {
     if (!device_->prepareTestScene(*surface_)) { return -1; }
 
     showWindow();
+    time_fps_last_ = std::chrono::system_clock::now();
     return 0;
 }
 
