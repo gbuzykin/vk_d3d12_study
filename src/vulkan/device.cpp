@@ -28,8 +28,13 @@ Device::Device(RenderingDriver& instance, PhysicalDevice& physical_device)
     : instance_(instance), physical_device_(physical_device) {}
 
 Device::~Device() {
-    ObjectDestroyer<VkCommandPool>::destroy(device_, command_pool_);
+    ObjectDestroyer<VkBuffer>::destroy(device_, vertex_buffer_);
+    for (const auto& pipeline : graphics_pipelines_) { ObjectDestroyer<VkPipeline>::destroy(device_, pipeline); }
+    ObjectDestroyer<VkPipelineLayout>::destroy(device_, pipeline_layout_);
+    ObjectDestroyer<VkShaderModule>::destroy(device_, vertex_shader_module_);
+    ObjectDestroyer<VkShaderModule>::destroy(device_, fragment_shader_module_);
     ObjectDestroyer<VkRenderPass>::destroy(device_, render_pass_);
+    ObjectDestroyer<VkCommandPool>::destroy(device_, command_pool_);
     ObjectDestroyer<VkSemaphore>::destroy(device_, sem_image_acquired_);
     ObjectDestroyer<VkSemaphore>::destroy(device_, sem_ready_to_present_);
     ObjectDestroyer<VkFence>::destroy(device_, fence_drawing_);
@@ -237,6 +242,150 @@ bool Device::prepareTestScene(ISurface& surface) {
         return false;
     }
 
+    // Graphics pipeline
+
+    std::vector<std::uint8_t> vertex_shader_spirv;
+    std::vector<std::uint8_t> fragment_shader_spirv;
+
+    if (!createShaderModule(vertex_shader_spirv, vertex_shader_module_)) { return false; }
+    if (!createShaderModule(fragment_shader_spirv, fragment_shader_module_)) { return false; }
+
+    const std::array shader_stage_create_infos{
+        Wrapper<VkPipelineShaderStageCreateInfo>::unwrap({
+            .shader_stage = VK_SHADER_STAGE_VERTEX_BIT,
+            .shader_module = vertex_shader_module_,
+            .entry_point_name = "main",
+        }),
+        Wrapper<VkPipelineShaderStageCreateInfo>::unwrap({
+            .shader_stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .shader_module = fragment_shader_module_,
+            .entry_point_name = "main",
+        }),
+    };
+
+    const std::array vertex_input_binding_descriptions{
+        VkVertexInputBindingDescription{
+            .binding = 0,
+            .stride = 3 * sizeof(float),
+            .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+        },
+    };
+    const std::array vertex_attribute_descriptions{
+        VkVertexInputAttributeDescription{
+            .location = 0,
+            .binding = 0,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
+            .offset = 0,
+        },
+    };
+    const auto vertex_input_state_create_info = Wrapper<VkPipelineVertexInputStateCreateInfo>::unwrap({
+        .binding_descriptions = vertex_input_binding_descriptions,
+        .attribute_descriptions = vertex_attribute_descriptions,
+    });
+
+    const auto input_assembly_state_create_info = Wrapper<VkPipelineInputAssemblyStateCreateInfo>::unwrap({
+        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
+        .primitive_restart_enable = false,
+    });
+
+    const std::array<VkViewport, 1> viewports{};
+    const std::array<VkRect2D, 1> scissors{};
+    const auto viewport_state_create_info = Wrapper<VkPipelineViewportStateCreateInfo>::unwrap({
+        .viewports = viewports,
+        .scissors = scissors,
+    });
+
+    const auto rasterization_state_create_info = Wrapper<VkPipelineRasterizationStateCreateInfo>::unwrap({
+        .depth_clamp_enable = false,
+        .rasterizer_discard_enable = false,
+        .polygon_mode = VK_POLYGON_MODE_FILL,
+        .culling_mode = VK_CULL_MODE_BACK_BIT,
+        .front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+        .depth_bias_enable = false,
+        .depth_bias_constant_factor = 0.0f,
+        .depth_bias_clamp = 0.0f,
+        .depth_bias_slope_factor = 0.0f,
+        .line_width = 1.0f,
+    });
+
+    const auto multisample_state_create_info = Wrapper<VkPipelineMultisampleStateCreateInfo>::unwrap({
+        .sample_count = VK_SAMPLE_COUNT_1_BIT,
+        .per_sample_shading_enable = false,
+        .min_sample_shading = 0.0f,
+        .alpha_to_coverage_enable = false,
+        .alpha_to_one_enable = false,
+    });
+
+    const std::array attachment_blend_states{
+        VkPipelineColorBlendAttachmentState{
+            .blendEnable = false,
+            .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
+            .dstColorBlendFactor = VK_BLEND_FACTOR_ONE,
+            .colorBlendOp = VK_BLEND_OP_ADD,
+            .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+            .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+            .alphaBlendOp = VK_BLEND_OP_ADD,
+            .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT |
+                              VK_COLOR_COMPONENT_A_BIT,
+        },
+    };
+    const auto blend_state_create_info = Wrapper<VkPipelineColorBlendStateCreateInfo>::unwrap({
+        .logic_op_enable = false,
+        .logic_op = VK_LOGIC_OP_COPY,
+        .attachment_blend_states = attachment_blend_states,
+        .blend_constants = {1.0f, 1.0f, 1.0f, 1.0f},
+    });
+
+    const std::array dynamic_states{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    const auto dynamic_state_create_info = Wrapper<VkPipelineDynamicStateCreateInfo>::unwrap({
+        .dynamic_states = dynamic_states,
+    });
+
+    if (!createPipelineLayout({}, {}, pipeline_layout_)) { return false; }
+
+    const std::array graphics_pipeline_create_infos{
+        Wrapper<VkGraphicsPipelineCreateInfo>::unwrap({
+            .shader_stage_create_infos = shader_stage_create_infos,
+            .vertex_input_state_create_info = &vertex_input_state_create_info,
+            .input_assembly_state_create_info = &input_assembly_state_create_info,
+            .viewport_state_create_info = &viewport_state_create_info,
+            .rasterization_state_create_info = &rasterization_state_create_info,
+            .multisample_state_create_info = &multisample_state_create_info,
+            .blend_state_create_info = &blend_state_create_info,
+            .dynamic_state_creat_info = &dynamic_state_create_info,
+            .pipeline_layout = pipeline_layout_,
+            .render_pass = render_pass_,
+            .base_pipeline_index = -1,
+        }),
+    };
+
+    graphics_pipelines_.resize(1, VK_NULL_HANDLE);
+    if (!createGraphicsPipelines({graphics_pipeline_create_infos, graphics_pipelines_}, VK_NULL_HANDLE)) {
+        return false;
+    }
+
+    graphics_pipeline_ = graphics_pipelines_[0];
+
+    // Vertex data
+    std::vector<float> vertices{0.0f, -0.75f, 0.0f, -0.75f, 0.75f, 0.0f, 0.75f, 0.75f, 0.0f};
+
+    if (!createBuffer(sizeof(vertices[0]) * vertices.size(),
+                      VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertex_buffer_)) {
+        return false;
+    }
+
+#if 0
+    InitVkDestroyer( LogicalDevice, BufferMemory );
+    if( !AllocateAndBindMemoryObjectToBuffer( PhysicalDevice, *LogicalDevice, *VertexBuffer, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, *BufferMemory ) ) {
+      return false;
+    }
+
+    if( !UseStagingBufferToUpdateBufferWithDeviceLocalMemoryBound( PhysicalDevice, *LogicalDevice, sizeof( vertices[0] ) * vertices.size(), &vertices[0], *VertexBuffer, 0, 0,
+      VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, GraphicsQueue.Handle, CommandBuffer, {} ) ) {
+      return false;
+    }
+#endif
+
     return true;
 }
 
@@ -278,8 +427,37 @@ bool Device::renderTestScene(ISwapChain& swap_chain) {
     // Drawing
 
     command_buffer_.beginRenderPass(render_pass_, ~framebuffer, swap_chain_impl.getImageRect(),
-                                    std::array{VkClearValue{.color = {{0.2f, 0.5f, 0.8f, 1.0f}}}},
+                                    std::array{VkClearValue{.color = {{0.1f, 0.2f, 0.3f, 1.0f}}}},
                                     VK_SUBPASS_CONTENTS_INLINE);
+
+#if 0
+    BindPipelineObject( CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *GraphicsPipeline );
+    VkViewport viewport = {
+      0.0f,                                       // float    x
+      0.0f,                                       // float    y
+      static_cast<float>(Swapchain.Size.width),   // float    width
+      static_cast<float>(Swapchain.Size.height),  // float    height
+      0.0f,                                       // float    minDepth
+      1.0f,                                       // float    maxDepth
+    };
+    SetViewportStateDynamically( CommandBuffer, 0, { viewport } );
+
+    VkRect2D scissor = {
+      {                                         // VkOffset2D     offset
+        0,                                        // int32_t        x
+        0                                         // int32_t        y
+      },
+      {                                         // VkExtent2D     extent
+        Swapchain.Size.width,                     // uint32_t       width
+        Swapchain.Size.height                     // uint32_t       height
+      }
+    };
+    SetScissorStateDynamically( CommandBuffer, 0, { scissor } );
+
+    BindVertexBuffers( CommandBuffer, 0, { { *VertexBuffer, 0 } } );
+
+    DrawGeometry( CommandBuffer, 3, 1, 0, 0 );
+#endif
 
     command_buffer_.endRenderPass();
 
@@ -442,6 +620,159 @@ bool Device::allocateCommandBuffers(VkCommandPool command_pool, VkCommandBufferL
 
     return true;
 }
+
+bool Device::createShaderModule(std::span<std::uint8_t> source_code, VkShaderModule& shader_module) {
+    const VkShaderModuleCreateInfo create_info{
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = source_code.size(),
+        .pCode = reinterpret_cast<const std::uint32_t*>(source_code.data()),
+    };
+
+    VkResult result = vkCreateShaderModule(device_, &create_info, nullptr, &shader_module);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't create a shader module");
+        return false;
+    }
+
+    return true;
+}
+
+bool Device::createPipelineLayout(std::span<const VkDescriptorSetLayout> descriptor_set_layouts,
+                                  std::span<const VkPushConstantRange> push_constant_ranges,
+                                  VkPipelineLayout& pipeline_layout) {
+    const VkPipelineLayoutCreateInfo create_info{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = std::uint32_t(descriptor_set_layouts.size()),
+        .pSetLayouts = descriptor_set_layouts.data(),
+        .pushConstantRangeCount = std::uint32_t(push_constant_ranges.size()),
+        .pPushConstantRanges = push_constant_ranges.data(),
+    };
+
+    VkResult result = vkCreatePipelineLayout(device_, &create_info, nullptr, &pipeline_layout);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't create pipeline layout");
+        return false;
+    }
+
+    return true;
+}
+
+bool Device::createGraphicsPipelines(MultiSpan<const VkGraphicsPipelineCreateInfo, VkPipeline> pipelines,
+                                     VkPipelineCache pipeline_cache) {
+    if (pipelines.empty()) { return false; }
+    VkResult result = vkCreateGraphicsPipelines(device_, pipeline_cache, std::uint32_t(pipelines.size()),
+                                                pipelines.data<0>(), nullptr, pipelines.data<1>());
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't create a graphics pipeline");
+        return false;
+    }
+    return false;
+}
+
+bool Device::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer& buffer) {
+    const VkBufferCreateInfo create_info{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = size,
+        .usage = usage,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    };
+
+    VkResult result = vkCreateBuffer(device_, &create_info, nullptr, &buffer);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't create a buffer");
+        return false;
+    }
+
+    return true;
+}
+
+#if 0
+bool AllocateAndBindMemoryObjectToBuffer(VkPhysicalDevice physical_device, VkDevice logical_device, VkBuffer buffer,
+                                         VkMemoryPropertyFlagBits memory_properties, VkDeviceMemory& memory_object) {
+    VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &physical_device_memory_properties);
+
+    VkMemoryRequirements memory_requirements;
+    vkGetBufferMemoryRequirements(logical_device, buffer, &memory_requirements);
+
+    memory_object = VK_NULL_HANDLE;
+    for (uint32_t type = 0; type < physical_device_memory_properties.memoryTypeCount; ++type) {
+        if ((memory_requirements.memoryTypeBits & (1 << type)) &&
+            ((physical_device_memory_properties.memoryTypes[type].propertyFlags & memory_properties) ==
+             memory_properties)) {
+            VkMemoryAllocateInfo buffer_memory_allocate_info = {
+                VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,  // VkStructureType    sType
+                nullptr,                                 // const void       * pNext
+                memory_requirements.size,                // VkDeviceSize       allocationSize
+                type                                     // uint32_t           memoryTypeIndex
+            };
+
+            VkResult result = vkAllocateMemory(logical_device, &buffer_memory_allocate_info, nullptr, &memory_object);
+            if (VK_SUCCESS == result) { break; }
+        }
+    }
+
+    if (VK_NULL_HANDLE == memory_object) {
+        std::cout << "Could not allocate memory for a buffer." << std::endl;
+        return false;
+    }
+
+    VkResult result = vkBindBufferMemory(logical_device, buffer, memory_object, 0);
+    if (VK_SUCCESS != result) {
+        std::cout << "Could not bind memory object to a buffer." << std::endl;
+        return false;
+    }
+    return true;
+}
+
+bool UseStagingBufferToUpdateBufferWithDeviceLocalMemoryBound(
+    VkPhysicalDevice physical_device, VkDevice logical_device, VkDeviceSize data_size, void* data,
+    VkBuffer destination_buffer, VkDeviceSize destination_offset, VkAccessFlags destination_buffer_current_access,
+    VkAccessFlags destination_buffer_new_access, VkPipelineStageFlags destination_buffer_generating_stages,
+    VkPipelineStageFlags destination_buffer_consuming_stages, VkQueue queue, VkCommandBuffer command_buffer,
+    std::vector<VkSemaphore> signal_semaphores) {
+    VkDestroyer(VkBuffer) staging_buffer;
+    InitVkDestroyer(logical_device, staging_buffer);
+    if (!CreateBuffer(logical_device, data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, *staging_buffer)) { return false; }
+
+    VkDestroyer(VkDeviceMemory) memory_object;
+    InitVkDestroyer(logical_device, memory_object);
+    if (!AllocateAndBindMemoryObjectToBuffer(physical_device, logical_device, *staging_buffer,
+                                             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, *memory_object)) {
+        return false;
+    }
+
+    if (!MapUpdateAndUnmapHostVisibleMemory(logical_device, *memory_object, 0, data_size, data, true, nullptr)) {
+        return false;
+    }
+
+    if (!BeginCommandBufferRecordingOperation(command_buffer, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) {
+        return false;
+    }
+
+    SetBufferMemoryBarrier(command_buffer, destination_buffer_generating_stages, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           {{destination_buffer, destination_buffer_current_access, VK_ACCESS_TRANSFER_WRITE_BIT,
+                             VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED}});
+
+    CopyDataBetweenBuffers(command_buffer, *staging_buffer, destination_buffer, {{0, destination_offset, data_size}});
+
+    SetBufferMemoryBarrier(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, destination_buffer_consuming_stages,
+                           {{destination_buffer, VK_ACCESS_TRANSFER_WRITE_BIT, destination_buffer_new_access,
+                             VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED}});
+
+    if (!EndCommandBufferRecordingOperation(command_buffer)) { return false; }
+
+    VkDestroyer(VkFence) fence;
+    InitVkDestroyer(logical_device, fence);
+    if (!CreateFence(logical_device, false, *fence)) { return false; }
+
+    if (!SubmitCommandBuffersToQueue(queue, {}, {command_buffer}, signal_semaphores, *fence)) { return false; }
+
+    if (!WaitForFences(logical_device, {*fence}, VK_FALSE, 500000000)) { return false; }
+
+    return true;
+}
+#endif
 
 // --------------------------------------------------------
 // CommandBuffer class implementation

@@ -81,6 +81,14 @@ DEVICE_LEVEL_VK_FUNCTION(vkWaitForFences);
 DEVICE_LEVEL_VK_FUNCTION(vkResetFences);
 DEVICE_LEVEL_VK_FUNCTION(vkCreateCommandPool);
 DEVICE_LEVEL_VK_FUNCTION(vkDestroyCommandPool);
+DEVICE_LEVEL_VK_FUNCTION(vkCreateShaderModule);
+DEVICE_LEVEL_VK_FUNCTION(vkDestroyShaderModule);
+DEVICE_LEVEL_VK_FUNCTION(vkCreatePipelineLayout);
+DEVICE_LEVEL_VK_FUNCTION(vkDestroyPipelineLayout);
+DEVICE_LEVEL_VK_FUNCTION(vkCreateGraphicsPipelines);
+DEVICE_LEVEL_VK_FUNCTION(vkDestroyPipeline);
+DEVICE_LEVEL_VK_FUNCTION(vkCreateBuffer);
+DEVICE_LEVEL_VK_FUNCTION(vkDestroyBuffer);
 DEVICE_LEVEL_VK_FUNCTION(vkAllocateCommandBuffers);
 DEVICE_LEVEL_VK_FUNCTION(vkFreeCommandBuffers);
 DEVICE_LEVEL_VK_FUNCTION(vkBeginCommandBuffer);
@@ -89,7 +97,6 @@ DEVICE_LEVEL_VK_FUNCTION(vkCmdBeginRenderPass);
 DEVICE_LEVEL_VK_FUNCTION(vkCmdEndRenderPass);
 DEVICE_LEVEL_VK_FUNCTION(vkCmdPipelineBarrier);
 DEVICE_LEVEL_VK_FUNCTION(vkQueueSubmit);
-DEVICE_LEVEL_VK_FUNCTION(vkCreateBuffer);
 DEVICE_LEVEL_VK_FUNCTION(vkGetBufferMemoryRequirements);
 
 #undef DEVICE_LEVEL_VK_FUNCTION

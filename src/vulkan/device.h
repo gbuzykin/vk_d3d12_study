@@ -64,6 +64,12 @@ class Device : public IDevice {
     std::vector<VkCommandBuffer> command_buffers_;
     CommandBuffer command_buffer_;
     VkRenderPass render_pass_{VK_NULL_HANDLE};
+    VkShaderModule vertex_shader_module_{VK_NULL_HANDLE};
+    VkShaderModule fragment_shader_module_{VK_NULL_HANDLE};
+    VkPipelineLayout pipeline_layout_{VK_NULL_HANDLE};
+    std::vector<VkPipeline> graphics_pipelines_;
+    VkPipeline graphics_pipeline_{VK_NULL_HANDLE};
+    VkBuffer vertex_buffer_{VK_NULL_HANDLE};
 
     bool createSemaphore(VkSemaphore& semaphore);
 
@@ -81,6 +87,17 @@ class Device : public IDevice {
     bool createCommandPool(VkCommandPoolCreateFlags flags, std::uint32_t queue_family, VkCommandPool& command_pool);
     bool allocateCommandBuffers(VkCommandPool command_pool, VkCommandBufferLevel level,
                                 std::span<VkCommandBuffer> command_buffers);
+
+    bool createShaderModule(std::span<std::uint8_t> source_code, VkShaderModule& shader_module);
+
+    bool createPipelineLayout(std::span<const VkDescriptorSetLayout> descriptor_set_layouts,
+                              std::span<const VkPushConstantRange> push_constant_ranges,
+                              VkPipelineLayout& pipeline_layout);
+
+    bool createGraphicsPipelines(MultiSpan<const VkGraphicsPipelineCreateInfo, VkPipeline> pipelines,
+                                 VkPipelineCache pipeline_cache);
+
+    bool createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer& buffer);
 };
 
 }  // namespace app3d::rel::vulkan
