@@ -17,8 +17,9 @@ class PhysicalDevice {
  public:
     explicit PhysicalDevice(VkPhysicalDevice physical_device);
 
-    const char* getName() const { return properties_.deviceName; }
     bool isExtensionSupported(const char* extension) const;
+    const VkPhysicalDeviceProperties& getProperties() const { return properties_; }
+    const VkPhysicalDeviceMemoryProperties& getMemoryProperties() const { return memory_properties_; }
     const std::vector<VkQueueFamilyProperties>& getQueueFamilies() const { return queue_families_; }
     std::uint32_t findSuitableQueueFamily(VkQueueFlags flags, std::uint32_t n = 0) const;
     bool isSuitableDevice(const DesiredDeviceCaps& caps) const;
@@ -33,6 +34,7 @@ class PhysicalDevice {
     std::vector<VkExtensionProperties> extensions_;
     VkPhysicalDeviceProperties properties_{};
     VkPhysicalDeviceFeatures features_{};
+    VkPhysicalDeviceMemoryProperties memory_properties_{};
     std::vector<VkQueueFamilyProperties> queue_families_;
 };
 

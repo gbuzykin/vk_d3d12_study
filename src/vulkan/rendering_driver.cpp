@@ -79,7 +79,7 @@ const char* RenderingDriver::getPhysicalDeviceName(std::uint32_t device_index) c
         logError(LOG_VK "invalid physical device index");
         return nullptr;
     }
-    return physical_devices_[device_index]->getName();
+    return physical_devices_[device_index]->getProperties().deviceName;
 }
 
 bool RenderingDriver::isSuitablePhysicalDevice(std::uint32_t device_index, const DesiredDeviceCaps& caps) const {
@@ -308,6 +308,7 @@ bool PhysicalDevice::loadExtensionProperties() {
 bool PhysicalDevice::loadFeaturesAndProperties() {
     vkGetPhysicalDeviceProperties(physical_device_, &properties_);
     vkGetPhysicalDeviceFeatures(physical_device_, &features_);
+    vkGetPhysicalDeviceMemoryProperties(physical_device_, &memory_properties_);
 
     std::uint32_t queue_family_count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &queue_family_count, nullptr);

@@ -34,7 +34,7 @@ struct MainWindow::ImplData {
     std::array<KeyState, unsigned(KeyCode::KEY_CODE_COUNT)> key_state_table{};
     std::chrono::high_resolution_clock::time_point resize_timer_start{};
     bool check_key_timers = false;
-    bool schedule_resize = false;
+    bool resize_scheduled = false;
 };
 
 MainWindow::MainWindow() : data_(std::make_unique<ImplData>()) {}
@@ -146,11 +146,11 @@ int MainWindow::mainLoop() {
             if (!has_pressed) { data_->check_key_timers = false; }
         }
 
-        if (data_->schedule_resize) {
+        if (data_->resize_scheduled) {
             const auto timer_now = std::chrono::high_resolution_clock::now();
             if (std::chrono::duration<double>(timer_now - data_->resize_timer_start).count() > 0.5) {
-                data_->schedule_resize = false;
                 if (!onResize(ret_code)) { return ret_code; };
+                data_->resize_scheduled = false;
             }
         }
 
@@ -173,7 +173,7 @@ int MainWindow::mainLoop() {
                         data_->width = ev->width;
                         data_->height = ev->height;
                         data_->resize_timer_start = std::chrono::high_resolution_clock::now();
-                        data_->schedule_resize = true;
+                        data_->resize_scheduled = true;
                     }
                 } break;
                 case XCB_KEY_PRESS: {
@@ -218,7 +218,7 @@ int MainWindow::mainLoop() {
                     onMouseMove(get_mouse_button_mask(ev->state), ev->event_x, ev->event_y);
                 } break;
             }
-        } else if (!onIdle(ret_code)) {
+        } else if (!data_->resize_scheduled && !onIdle(ret_code)) {
             return ret_code;
         }
     }

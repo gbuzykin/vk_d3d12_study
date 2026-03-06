@@ -24,6 +24,8 @@ namespace app3d::rel {
 
 constexpr std::uint32_t INVALID_UINT32_VALUE = std::numeric_limits<std::uint32_t>::max();
 
+enum class RenderTargetResult { SUCCESS = 0, OUT_OF_DATE, FAILED };
+
 struct ISurface;
 struct ISwapChain;
 
@@ -56,7 +58,7 @@ struct IDevice {
     virtual ~IDevice() = default;
     virtual ISwapChain* createSwapChain(ISurface& surface, const SwapChainCreateInfo& create_info) = 0;
     virtual bool prepareTestScene(ISurface& surface) = 0;
-    virtual bool renderTestScene(ISwapChain& swap_chain) = 0;
+    virtual RenderTargetResult renderTestScene(ISwapChain& swap_chain) = 0;
 };
 
 struct ISurface {

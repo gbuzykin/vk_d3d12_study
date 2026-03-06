@@ -142,9 +142,12 @@ bool SwapChain::create(const SwapChainCreateInfo& create_info) {
     return true;
 }
 
-bool SwapChain::acquireImage(std::uint64_t timeout, VkSemaphore semaphore, VkFence fence, std::uint32_t& image_index) {
+RenderTargetResult SwapChain::acquireImage(std::uint64_t timeout, VkSemaphore semaphore, VkFence fence,
+                                           std::uint32_t& image_index) {
     VkResult result = vkAcquireNextImageKHR(~device_, swap_chain_, timeout, semaphore, fence, &image_index);
-    return result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR;
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) { return RenderTargetResult::OUT_OF_DATE; }
+    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) { return RenderTargetResult::FAILED; }
+    return RenderTargetResult::SUCCESS;
 }
 
 //@{ ISwapChain

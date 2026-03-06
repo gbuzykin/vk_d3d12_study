@@ -39,8 +39,8 @@ bool DevQueue::submitCommandBuffers(MultiSpan<const VkSemaphore, const VkPipelin
     return true;
 }
 
-bool DevQueue::presentImages(std::span<const VkSemaphore> rendering_semaphores,
-                             MultiSpan<const VkSwapchainKHR, const std::uint32_t> images_to_present) {
+RenderTargetResult DevQueue::presentImages(std::span<const VkSemaphore> rendering_semaphores,
+                                           MultiSpan<const VkSwapchainKHR, const std::uint32_t> images_to_present) {
     const VkPresentInfoKHR present_info{
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = std::uint32_t(rendering_semaphores.size()),
@@ -51,5 +51,7 @@ bool DevQueue::presentImages(std::span<const VkSemaphore> rendering_semaphores,
     };
 
     VkResult result = vkQueuePresentKHR(queue_, &present_info);
-    return result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR;
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) { return RenderTargetResult::OUT_OF_DATE; }
+    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) { return RenderTargetResult::FAILED; }
+    return RenderTargetResult::SUCCESS;
 }
