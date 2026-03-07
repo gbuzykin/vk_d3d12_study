@@ -30,6 +30,8 @@ INSTANCE_LEVEL_VK_FUNCTION(vkEnumerateDeviceExtensionProperties);
 INSTANCE_LEVEL_VK_FUNCTION(vkGetPhysicalDeviceProperties);
 INSTANCE_LEVEL_VK_FUNCTION(vkGetPhysicalDeviceFeatures);
 INSTANCE_LEVEL_VK_FUNCTION(vkGetPhysicalDeviceQueueFamilyProperties);
+INSTANCE_LEVEL_VK_FUNCTION(vkGetPhysicalDeviceMemoryProperties);
+INSTANCE_LEVEL_VK_FUNCTION(vkGetPhysicalDeviceFormatProperties);
 INSTANCE_LEVEL_VK_FUNCTION(vkCreateDevice);
 INSTANCE_LEVEL_VK_FUNCTION(vkGetDeviceProcAddr);
 
@@ -67,28 +69,47 @@ INSTANCE_LEVEL_VK_FUNCTION_FROM_EXTENSION(vkCreateWaylandSurfaceKHR, VK_KHR_WAYL
 DEVICE_LEVEL_VK_FUNCTION(vkDestroyDevice);
 DEVICE_LEVEL_VK_FUNCTION(vkDeviceWaitIdle);
 DEVICE_LEVEL_VK_FUNCTION(vkGetDeviceQueue);
+DEVICE_LEVEL_VK_FUNCTION(vkQueueSubmit);
+
 DEVICE_LEVEL_VK_FUNCTION(vkCreateImageView);
 DEVICE_LEVEL_VK_FUNCTION(vkDestroyImageView);
+
 DEVICE_LEVEL_VK_FUNCTION(vkCreateRenderPass);
 DEVICE_LEVEL_VK_FUNCTION(vkDestroyRenderPass);
+
 DEVICE_LEVEL_VK_FUNCTION(vkCreateFramebuffer);
 DEVICE_LEVEL_VK_FUNCTION(vkDestroyFramebuffer);
+
 DEVICE_LEVEL_VK_FUNCTION(vkCreateSemaphore);
 DEVICE_LEVEL_VK_FUNCTION(vkDestroySemaphore);
+
 DEVICE_LEVEL_VK_FUNCTION(vkCreateFence);
 DEVICE_LEVEL_VK_FUNCTION(vkDestroyFence);
 DEVICE_LEVEL_VK_FUNCTION(vkWaitForFences);
 DEVICE_LEVEL_VK_FUNCTION(vkResetFences);
+
 DEVICE_LEVEL_VK_FUNCTION(vkCreateCommandPool);
 DEVICE_LEVEL_VK_FUNCTION(vkDestroyCommandPool);
+
 DEVICE_LEVEL_VK_FUNCTION(vkCreateShaderModule);
 DEVICE_LEVEL_VK_FUNCTION(vkDestroyShaderModule);
+
 DEVICE_LEVEL_VK_FUNCTION(vkCreatePipelineLayout);
 DEVICE_LEVEL_VK_FUNCTION(vkDestroyPipelineLayout);
+
 DEVICE_LEVEL_VK_FUNCTION(vkCreateGraphicsPipelines);
 DEVICE_LEVEL_VK_FUNCTION(vkDestroyPipeline);
+
 DEVICE_LEVEL_VK_FUNCTION(vkCreateBuffer);
 DEVICE_LEVEL_VK_FUNCTION(vkDestroyBuffer);
+DEVICE_LEVEL_VK_FUNCTION(vkGetBufferMemoryRequirements);
+DEVICE_LEVEL_VK_FUNCTION(vkAllocateMemory);
+DEVICE_LEVEL_VK_FUNCTION(vkFreeMemory);
+DEVICE_LEVEL_VK_FUNCTION(vkBindBufferMemory);
+DEVICE_LEVEL_VK_FUNCTION(vkMapMemory);
+DEVICE_LEVEL_VK_FUNCTION(vkUnmapMemory);
+DEVICE_LEVEL_VK_FUNCTION(vkFlushMappedMemoryRanges);
+
 DEVICE_LEVEL_VK_FUNCTION(vkAllocateCommandBuffers);
 DEVICE_LEVEL_VK_FUNCTION(vkFreeCommandBuffers);
 DEVICE_LEVEL_VK_FUNCTION(vkBeginCommandBuffer);
@@ -96,8 +117,12 @@ DEVICE_LEVEL_VK_FUNCTION(vkEndCommandBuffer);
 DEVICE_LEVEL_VK_FUNCTION(vkCmdBeginRenderPass);
 DEVICE_LEVEL_VK_FUNCTION(vkCmdEndRenderPass);
 DEVICE_LEVEL_VK_FUNCTION(vkCmdPipelineBarrier);
-DEVICE_LEVEL_VK_FUNCTION(vkQueueSubmit);
-DEVICE_LEVEL_VK_FUNCTION(vkGetBufferMemoryRequirements);
+DEVICE_LEVEL_VK_FUNCTION(vkCmdCopyBuffer);
+DEVICE_LEVEL_VK_FUNCTION(vkCmdBindPipeline);
+DEVICE_LEVEL_VK_FUNCTION(vkCmdSetViewport);
+DEVICE_LEVEL_VK_FUNCTION(vkCmdSetScissor);
+DEVICE_LEVEL_VK_FUNCTION(vkCmdBindVertexBuffers);
+DEVICE_LEVEL_VK_FUNCTION(vkCmdDraw);
 
 #undef DEVICE_LEVEL_VK_FUNCTION
 

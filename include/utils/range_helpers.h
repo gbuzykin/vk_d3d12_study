@@ -15,6 +15,7 @@ concept IsContiguousRange = requires(Range r) {
 template<typename... Ts>
 class MultiSpan {
  public:
+    MultiSpan() = default;
     template<typename... Range>
         requires(IsContiguousRange<std::remove_reference_t<Range>, Ts> && ...)
     MultiSpan(Range&&... ranges)
@@ -30,8 +31,8 @@ class MultiSpan {
     }
 
  private:
-    std::size_t size_;
-    std::tuple<Ts*...> ptrs_;
+    std::size_t size_ = 0;
+    std::tuple<Ts*...> ptrs_{};
 };
 
 }  // namespace app3d

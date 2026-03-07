@@ -8,8 +8,11 @@
 
 #include "utils/logger.h"
 
+#include <uxs/io/filebuf.h>
+
 #include <algorithm>
 #include <array>
+#include <cstring>
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -28,6 +31,7 @@ Device::Device(RenderingDriver& instance, PhysicalDevice& physical_device)
     : instance_(instance), physical_device_(physical_device) {}
 
 Device::~Device() {
+    ObjectDestroyer<VkDeviceMemory>::destroy(device_, vertex_buffer_memory_);
     ObjectDestroyer<VkBuffer>::destroy(device_, vertex_buffer_);
     for (const auto& pipeline : graphics_pipelines_) { ObjectDestroyer<VkPipeline>::destroy(device_, pipeline); }
     ObjectDestroyer<VkPipelineLayout>::destroy(device_, pipeline_layout_);
@@ -187,7 +191,7 @@ bool Device::prepareTestScene(ISurface& surface) {
     command_buffers_.resize(1, VK_NULL_HANDLE);
     if (!allocateCommandBuffers(command_pool_, VK_COMMAND_BUFFER_LEVEL_PRIMARY, command_buffers_)) { return false; }
 
-    command_buffer_ = CommandBuffer{command_buffers_[0]};
+    command_buffer_ = CommandBuffer::wrap(command_buffers_[0]);
 
     // Render pass
 
@@ -245,7 +249,18 @@ bool Device::prepareTestScene(ISurface& surface) {
     // Graphics pipeline
 
     std::vector<std::uint8_t> vertex_shader_spirv;
+    if (uxs::bfilebuf ifile("shaders/simple/shader.vert.spv", "r"); ifile) {
+        vertex_shader_spirv.resize(ifile.seek(0, uxs::seekdir::end));
+        ifile.seek(0);
+        vertex_shader_spirv.resize(ifile.read(vertex_shader_spirv));
+    }
+
     std::vector<std::uint8_t> fragment_shader_spirv;
+    if (uxs::bfilebuf ifile("shaders/simple/shader.frag.spv", "r"); ifile) {
+        fragment_shader_spirv.resize(ifile.seek(0, uxs::seekdir::end));
+        ifile.seek(0);
+        fragment_shader_spirv.resize(ifile.read(fragment_shader_spirv));
+    }
 
     if (!createShaderModule(vertex_shader_spirv, vertex_shader_module_)) { return false; }
     if (!createShaderModule(fragment_shader_spirv, fragment_shader_module_)) { return false; }
@@ -374,17 +389,16 @@ bool Device::prepareTestScene(ISurface& surface) {
         return false;
     }
 
-#if 0
-    InitVkDestroyer( LogicalDevice, BufferMemory );
-    if( !AllocateAndBindMemoryObjectToBuffer( PhysicalDevice, *LogicalDevice, *VertexBuffer, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, *BufferMemory ) ) {
-      return false;
+    if (!allocateAndBindMemoryObjectToBuffer(vertex_buffer_, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                                             vertex_buffer_memory_)) {
+        return false;
     }
 
-    if( !UseStagingBufferToUpdateBufferWithDeviceLocalMemoryBound( PhysicalDevice, *LogicalDevice, sizeof( vertices[0] ) * vertices.size(), &vertices[0], *VertexBuffer, 0, 0,
-      VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, GraphicsQueue.Handle, CommandBuffer, {} ) ) {
-      return false;
+    if (!writeToDeviceLocalMemory(graphics_queue_, command_buffer_, sizeof(vertices[0]) * vertices.size(), &vertices[0],
+                                  vertex_buffer_, 0, 0, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
+                                  VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, {})) {
+        return false;
     }
-#endif
 
     return true;
 }
@@ -430,34 +444,22 @@ bool Device::renderTestScene(ISwapChain& swap_chain) {
                                     std::array{VkClearValue{.color = {{0.1f, 0.2f, 0.3f, 1.0f}}}},
                                     VK_SUBPASS_CONTENTS_INLINE);
 
-#if 0
-    BindPipelineObject( CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *GraphicsPipeline );
-    VkViewport viewport = {
-      0.0f,                                       // float    x
-      0.0f,                                       // float    y
-      static_cast<float>(Swapchain.Size.width),   // float    width
-      static_cast<float>(Swapchain.Size.height),  // float    height
-      0.0f,                                       // float    minDepth
-      1.0f,                                       // float    maxDepth
-    };
-    SetViewportStateDynamically( CommandBuffer, 0, { viewport } );
+    command_buffer_.bindPipelineObject(VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline_);
 
-    VkRect2D scissor = {
-      {                                         // VkOffset2D     offset
-        0,                                        // int32_t        x
-        0                                         // int32_t        y
-      },
-      {                                         // VkExtent2D     extent
-        Swapchain.Size.width,                     // uint32_t       width
-        Swapchain.Size.height                     // uint32_t       height
-      }
-    };
-    SetScissorStateDynamically( CommandBuffer, 0, { scissor } );
+    command_buffer_.setViewportState(0, std::array{VkViewport{
+                                            .x = 0.0f,
+                                            .y = 0.0f,
+                                            .width = float(swap_chain_impl.getImageWidth()),
+                                            .height = float(swap_chain_impl.getImageHeight()),
+                                            .minDepth = 0.0f,
+                                            .maxDepth = 1.0f,
+                                        }});
 
-    BindVertexBuffers( CommandBuffer, 0, { { *VertexBuffer, 0 } } );
+    command_buffer_.setScissorState(0, std::array{VkRect2D{.offset = {0, 0}, .extent = swap_chain_impl.getImageSize()}});
 
-    DrawGeometry( CommandBuffer, 3, 1, 0, 0 );
-#endif
+    command_buffer_.bindVertexBuffers(0, {std::array{vertex_buffer_}, std::array{VkDeviceSize(0)}});
+
+    command_buffer_.drawGeometry(3, 1, 0, 0);
 
     command_buffer_.endRenderPass();
 
@@ -521,26 +523,20 @@ bool Device::createFence(bool signaled, VkFence& fence) {
 }
 
 bool Device::waitForFences(std::span<const VkFence> fences, VkBool32 wait_for_all, std::uint64_t timeout) {
-    if (fences.empty()) { return true; }
-
     VkResult result = vkWaitForFences(device_, std::uint32_t(fences.size()), fences.data(), wait_for_all, timeout);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "waiting for fence failed");
         return false;
     }
-
     return true;
 }
 
 bool Device::resetFences(std::span<const VkFence> fences) {
-    if (fences.empty()) { return true; }
-
     VkResult result = vkResetFences(device_, std::uint32_t(fences.size()), fences.data());
     if (result != VK_SUCCESS) {
         logError(LOG_VK "error occurred when tried to reset fences");
         return false;
     }
-
     return true;
 }
 
@@ -566,15 +562,15 @@ bool Device::createRenderPass(std::span<const VkAttachmentDescription> attachmen
     return true;
 }
 
-bool Device::createFramebuffer(VkRenderPass render_pass, std::span<const VkImageView> attachments, VkExtent2D size,
+bool Device::createFramebuffer(VkRenderPass render_pass, std::span<const VkImageView> attachments, VkExtent2D extent,
                                std::uint32_t layers, VkFramebuffer& framebuffer) {
     const VkFramebufferCreateInfo create_info{
         .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
         .renderPass = render_pass,
         .attachmentCount = std::uint32_t(attachments.size()),
         .pAttachments = attachments.data(),
-        .width = size.width,
-        .height = size.height,
+        .width = extent.width,
+        .height = extent.height,
         .layers = layers,
     };
 
@@ -659,14 +655,13 @@ bool Device::createPipelineLayout(std::span<const VkDescriptorSetLayout> descrip
 
 bool Device::createGraphicsPipelines(MultiSpan<const VkGraphicsPipelineCreateInfo, VkPipeline> pipelines,
                                      VkPipelineCache pipeline_cache) {
-    if (pipelines.empty()) { return false; }
     VkResult result = vkCreateGraphicsPipelines(device_, pipeline_cache, std::uint32_t(pipelines.size()),
                                                 pipelines.data<0>(), nullptr, pipelines.data<1>());
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create a graphics pipeline");
         return false;
     }
-    return false;
+    return true;
 }
 
 bool Device::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer& buffer) {
@@ -686,93 +681,131 @@ bool Device::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer&
     return true;
 }
 
-#if 0
-bool AllocateAndBindMemoryObjectToBuffer(VkPhysicalDevice physical_device, VkDevice logical_device, VkBuffer buffer,
-                                         VkMemoryPropertyFlagBits memory_properties, VkDeviceMemory& memory_object) {
-    VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
-    vkGetPhysicalDeviceMemoryProperties(physical_device, &physical_device_memory_properties);
+bool Device::allocateAndBindMemoryObjectToBuffer(VkBuffer buffer, VkMemoryPropertyFlagBits desired_properties,
+                                                 VkDeviceMemory& memory_object) {
+    VkMemoryRequirements memory_requirements{};
+    vkGetBufferMemoryRequirements(device_, buffer, &memory_requirements);
 
-    VkMemoryRequirements memory_requirements;
-    vkGetBufferMemoryRequirements(logical_device, buffer, &memory_requirements);
+    const auto& memory_properties = getPhysicalDevice().getMemoryProperties();
 
     memory_object = VK_NULL_HANDLE;
-    for (uint32_t type = 0; type < physical_device_memory_properties.memoryTypeCount; ++type) {
-        if ((memory_requirements.memoryTypeBits & (1 << type)) &&
-            ((physical_device_memory_properties.memoryTypes[type].propertyFlags & memory_properties) ==
-             memory_properties)) {
-            VkMemoryAllocateInfo buffer_memory_allocate_info = {
-                VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,  // VkStructureType    sType
-                nullptr,                                 // const void       * pNext
-                memory_requirements.size,                // VkDeviceSize       allocationSize
-                type                                     // uint32_t           memoryTypeIndex
+
+    for (std::uint32_t type = 0; type < memory_properties.memoryTypeCount; ++type) {
+        if ((memory_requirements.memoryTypeBits & (1U << type)) &&
+            (memory_properties.memoryTypes[type].propertyFlags & desired_properties) == desired_properties) {
+            const VkMemoryAllocateInfo allocate_info{
+                .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+                .allocationSize = memory_requirements.size,
+                .memoryTypeIndex = type,
             };
 
-            VkResult result = vkAllocateMemory(logical_device, &buffer_memory_allocate_info, nullptr, &memory_object);
-            if (VK_SUCCESS == result) { break; }
+            VkResult result = vkAllocateMemory(device_, &allocate_info, nullptr, &memory_object);
+            if (result == VK_SUCCESS) { break; }
         }
     }
 
-    if (VK_NULL_HANDLE == memory_object) {
-        std::cout << "Could not allocate memory for a buffer." << std::endl;
+    if (memory_object == VK_NULL_HANDLE) {
+        logError(LOG_VK "couldn't allocate memory for a buffer");
         return false;
     }
 
-    VkResult result = vkBindBufferMemory(logical_device, buffer, memory_object, 0);
-    if (VK_SUCCESS != result) {
-        std::cout << "Could not bind memory object to a buffer." << std::endl;
+    VkResult result = vkBindBufferMemory(device_, buffer, memory_object, 0);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't bind memory object to a buffer");
+        return false;
+    }
+
+    return true;
+}
+
+bool Device::writeToDeviceLocalMemory(DevQueue& queue, CommandBuffer& command_buffer, VkDeviceSize data_size,
+                                      void* data, VkBuffer dst, VkDeviceSize dst_offset,
+                                      VkAccessFlags dst_current_access, VkAccessFlags dst_new_access,
+                                      VkPipelineStageFlags dst_generating_stages,
+                                      VkPipelineStageFlags dst_consuming_stages,
+                                      std::span<const VkSemaphore> signal_semaphores) {
+    ObjectDestroyer<VkBuffer> staging_buffer(device_);
+    if (!createBuffer(data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, ~staging_buffer)) { return false; }
+
+    ObjectDestroyer<VkDeviceMemory> memory_object(device_);
+    if (!allocateAndBindMemoryObjectToBuffer(~staging_buffer, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, ~memory_object)) {
+        return false;
+    }
+
+    if (!writeToHostVisibleMemory(~memory_object, 0, data_size, data)) { return false; }
+
+    if (!command_buffer.beginCommandBuffer(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) { return false; }
+
+    command_buffer.setBufferMemoryBarrier(dst_generating_stages, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                          std::array{
+                                              Wrapper<VkBufferMemoryBarrier>::unwrap({
+                                                  .buffer = dst,
+                                                  .current_access = dst_current_access,
+                                                  .new_access = VK_ACCESS_TRANSFER_WRITE_BIT,
+                                                  .current_queue_family = VK_QUEUE_FAMILY_IGNORED,
+                                                  .new_queue_family = VK_QUEUE_FAMILY_IGNORED,
+                                              }),
+                                          });
+
+    command_buffer.copyDataBetweenBuffers(~staging_buffer, dst,
+                                          std::array{
+                                              VkBufferCopy{.srcOffset = 0, .dstOffset = dst_offset, .size = data_size},
+                                          });
+
+    command_buffer.setBufferMemoryBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, dst_consuming_stages,
+                                          std::array{
+                                              Wrapper<VkBufferMemoryBarrier>::unwrap({
+                                                  .buffer = dst,
+                                                  .current_access = VK_ACCESS_TRANSFER_WRITE_BIT,
+                                                  .new_access = dst_new_access,
+                                                  .current_queue_family = VK_QUEUE_FAMILY_IGNORED,
+                                                  .new_queue_family = VK_QUEUE_FAMILY_IGNORED,
+                                              }),
+                                          });
+
+    if (!command_buffer.endCommandBuffer()) { return false; }
+
+    ObjectDestroyer<VkFence> fence(device_);
+    if (!createFence(false, ~fence)) { return false; }
+
+    if (!queue.submitCommandBuffers({}, std::array{~command_buffer}, signal_semaphores, ~fence)) { return false; }
+
+    if (!waitForFences(std::array{~fence}, VK_FALSE, 500000000)) { return false; }
+
+    return true;
+}
+
+bool MappedMemory::map(VkDeviceSize offset, VkDeviceSize data_size) {
+    VkResult result = vkMapMemory(device_, memory_object_, offset, data_size, 0, &ptr_);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't map memory object");
         return false;
     }
     return true;
 }
 
-bool UseStagingBufferToUpdateBufferWithDeviceLocalMemoryBound(
-    VkPhysicalDevice physical_device, VkDevice logical_device, VkDeviceSize data_size, void* data,
-    VkBuffer destination_buffer, VkDeviceSize destination_offset, VkAccessFlags destination_buffer_current_access,
-    VkAccessFlags destination_buffer_new_access, VkPipelineStageFlags destination_buffer_generating_stages,
-    VkPipelineStageFlags destination_buffer_consuming_stages, VkQueue queue, VkCommandBuffer command_buffer,
-    std::vector<VkSemaphore> signal_semaphores) {
-    VkDestroyer(VkBuffer) staging_buffer;
-    InitVkDestroyer(logical_device, staging_buffer);
-    if (!CreateBuffer(logical_device, data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, *staging_buffer)) { return false; }
+bool Device::writeToHostVisibleMemory(VkDeviceMemory memory_object, VkDeviceSize offset, VkDeviceSize data_size,
+                                      void* data) {
+    MappedMemory mapped_memory(device_, memory_object);
+    if (!mapped_memory.map(offset, data_size)) { return false; }
 
-    VkDestroyer(VkDeviceMemory) memory_object;
-    InitVkDestroyer(logical_device, memory_object);
-    if (!AllocateAndBindMemoryObjectToBuffer(physical_device, logical_device, *staging_buffer,
-                                             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, *memory_object)) {
+    std::memcpy(mapped_memory.ptr(), data, std::size_t(data_size));
+
+    const std::array memory_ranges{VkMappedMemoryRange{
+        .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+        .memory = memory_object,
+        .offset = offset,
+        .size = VK_WHOLE_SIZE,
+    }};
+
+    VkResult result = vkFlushMappedMemoryRanges(device_, std::uint32_t(memory_ranges.size()), memory_ranges.data());
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't flush mapped memory");
         return false;
     }
-
-    if (!MapUpdateAndUnmapHostVisibleMemory(logical_device, *memory_object, 0, data_size, data, true, nullptr)) {
-        return false;
-    }
-
-    if (!BeginCommandBufferRecordingOperation(command_buffer, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) {
-        return false;
-    }
-
-    SetBufferMemoryBarrier(command_buffer, destination_buffer_generating_stages, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                           {{destination_buffer, destination_buffer_current_access, VK_ACCESS_TRANSFER_WRITE_BIT,
-                             VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED}});
-
-    CopyDataBetweenBuffers(command_buffer, *staging_buffer, destination_buffer, {{0, destination_offset, data_size}});
-
-    SetBufferMemoryBarrier(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, destination_buffer_consuming_stages,
-                           {{destination_buffer, VK_ACCESS_TRANSFER_WRITE_BIT, destination_buffer_new_access,
-                             VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED}});
-
-    if (!EndCommandBufferRecordingOperation(command_buffer)) { return false; }
-
-    VkDestroyer(VkFence) fence;
-    InitVkDestroyer(logical_device, fence);
-    if (!CreateFence(logical_device, false, *fence)) { return false; }
-
-    if (!SubmitCommandBuffersToQueue(queue, {}, {command_buffer}, signal_semaphores, *fence)) { return false; }
-
-    if (!WaitForFences(logical_device, {*fence}, VK_FALSE, 500000000)) { return false; }
 
     return true;
 }
-#endif
 
 // --------------------------------------------------------
 // CommandBuffer class implementation
@@ -801,13 +834,6 @@ bool CommandBuffer::endCommandBuffer() {
         return false;
     }
     return true;
-}
-
-void CommandBuffer::setImageMemoryBarrier(VkPipelineStageFlags generating_stages, VkPipelineStageFlags consuming_stages,
-                                          std::span<const VkImageMemoryBarrier> image_memory_barriers) {
-    if (image_memory_barriers.empty()) { return; }
-    vkCmdPipelineBarrier(command_buffer_, generating_stages, consuming_stages, 0, 0, nullptr, 0, nullptr,
-                         std::uint32_t(image_memory_barriers.size()), image_memory_barriers.data());
 }
 
 void CommandBuffer::beginRenderPass(VkRenderPass render_pass, VkFramebuffer framebuffer, VkRect2D render_area,
