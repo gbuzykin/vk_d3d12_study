@@ -45,7 +45,7 @@ Device::~Device() {
     ObjectDestroyer<VkDevice>::destroy(device_);
 }
 
-bool Device::create(const DesiredDeviceCaps& caps) {
+bool Device::create(const uxs::db::value& caps) {
     for (const char* extension : g_device_extensions) {
         if (!physical_device_.isExtensionSupported(extension)) {
             logError(LOG_VK "device extension '{}' is not supported", extension);
@@ -94,7 +94,7 @@ bool Device::create(const DesiredDeviceCaps& caps) {
 
     add_queue_create_info(present_queue_.getFamilyIndex(), priority);
 
-    if (caps.needs_compute) {
+    if (caps.value<bool>("needs_compute")) {
         compute_queue_ = DevQueue{physical_device_.findSuitableQueueFamily(VK_QUEUE_COMPUTE_BIT)};
         if (compute_queue_.getFamilyIndex() == INVALID_UINT32_VALUE) {
             logError(LOG_VK "couldn't obtain compute queue family index");
@@ -167,10 +167,6 @@ void Device::finalize() {
 }
 
 //@{ IDevice
-
-ISwapChain* Device::createSwapChain(ISurface& surface, const SwapChainCreateInfo& create_info) {
-    return static_cast<Surface&>(surface).createSwapChain(*this, create_info);
-}
 
 bool Device::prepareTestScene(ISurface& surface) {
     // Drawing synchronization

@@ -26,18 +26,18 @@ class SwapChain : public ISwapChain {
     VkImageView getImageView(std::uint32_t image_index) const { return image_views_[image_index]; }
 
     static std::uint32_t chooseImageCount(const VkSurfaceCapabilitiesKHR& capabilities,
-                                          const SwapChainCreateInfo& create_info);
-    static VkExtent2D chooseImageSize(const VkSurfaceCapabilitiesKHR& capabilities,
-                                      const SwapChainCreateInfo& create_info);
+                                          const uxs::db::value& create_info);
+    static VkExtent2D chooseImageSize(const VkSurfaceCapabilitiesKHR& capabilities, const uxs::db::value& create_info);
     static bool chooseImageUsage(const VkSurfaceCapabilitiesKHR& capabilities, VkImageUsageFlags& usage);
     static VkPresentModeKHR choosePresentMode(std::span<const VkPresentModeKHR> present_modes);
     static VkSurfaceFormatKHR chooseImageFormat(std::span<const VkSurfaceFormatKHR> formats);
 
-    bool create(const SwapChainCreateInfo& create_info);
+    bool create(const uxs::db::value& create_info);
     RenderTargetResult acquireImage(std::uint64_t timeout, VkSemaphore semaphore, VkFence fence,
                                     std::uint32_t& image_index);
 
     VkSwapchainKHR operator~() { return swap_chain_; }
+    Surface& getSurface() { return surface_; }
 
     //@{ ISwapChain
     //@}

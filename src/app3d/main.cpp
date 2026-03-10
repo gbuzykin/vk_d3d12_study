@@ -30,8 +30,7 @@ class App3DMainWindow : public MainWindow {
     }
 
     bool onResize(int& ret_code) override {
-        swap_chain_ = device_->createSwapChain(*surface_, swap_chain_create_info_);
-        if (!swap_chain_) {
+        if (!surface_->createSwapChain(*device_, swap_chain_create_info_)) {
             ret_code = -1;
             return false;
         }
@@ -45,10 +44,10 @@ class App3DMainWindow : public MainWindow {
     std::unique_ptr<rel::IRenderingDriver> driver_;
     rel::ISurface* surface_ = nullptr;
 
-    rel::DesiredDeviceCaps device_caps_{};
+    uxs::db::value device_caps_;
     rel::IDevice* device_ = nullptr;
 
-    rel::SwapChainCreateInfo swap_chain_create_info_{};
+    uxs::db::value swap_chain_create_info_;
     rel::ISwapChain* swap_chain_ = nullptr;
 };
 
@@ -60,12 +59,15 @@ int App3DMainWindow::init(int argc, char** argv) {
                                                                           "app3dGetRenderingDriverDescriptor");
     if (!entry) { return -1; }
 
-    std::string app_name{"App3D"};
+    const uxs::db::value app_info{
+        {"name", "App3D"},
+        {"version", {1, 0, 0}},
+    };
 
     driver_ = entry()->create_func();
-    if (!driver_ || !driver_->init(rel::ApplicationInfo{app_name.c_str(), {1, 0, 0}})) { return -1; }
+    if (!driver_ || !driver_->init(app_info)) { return -1; }
 
-    if (!createWindow(app_name, 1280, 1024)) { return -1; }
+    if (!createWindow(app_info.value<std::string>("name"), 1280, 1024)) { return -1; }
 
     surface_ = driver_->createSurface(getWindowDescriptor());
     if (!surface_) { return -1; }
@@ -85,7 +87,7 @@ int App3DMainWindow::init(int argc, char** argv) {
     device_ = driver_->createDevice(device_index, device_caps_);
     if (!device_) { return -1; }
 
-    swap_chain_ = device_->createSwapChain(*surface_, swap_chain_create_info_);
+    swap_chain_ = surface_->createSwapChain(*device_, swap_chain_create_info_);
     if (!swap_chain_) { return -1; }
 
     if (!device_->prepareTestScene(*surface_)) { return -1; }
