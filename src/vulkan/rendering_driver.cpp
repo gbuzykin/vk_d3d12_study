@@ -57,7 +57,7 @@ void RenderingDriver::destroySwapChains() {
 
 //@{ IRenderingDriver
 
-bool RenderingDriver::init(const ApplicationInfo& app_info) {
+bool RenderingDriver::init(const uxs::db::value& app_info) {
     if (!loadVulkanLoaderLibrary()) { return false; }
     if (!loadExtensionProperties()) { return false; }
     if (!createInstance(app_info)) { return false; }
@@ -73,7 +73,7 @@ const char* RenderingDriver::getPhysicalDeviceName(std::uint32_t device_index) c
     return physical_devices_[device_index]->getProperties().deviceName;
 }
 
-bool RenderingDriver::isSuitablePhysicalDevice(std::uint32_t device_index, const DesiredDeviceCaps& caps) const {
+bool RenderingDriver::isSuitablePhysicalDevice(std::uint32_t device_index, const uxs::db::value& caps) const {
     return physical_devices_[device_index]->isSuitableDevice(caps);
 }
 
@@ -84,7 +84,7 @@ ISurface* RenderingDriver::createSurface(const WindowHandle& window_handle) {
     return surfaces_.back().get();
 }
 
-IDevice* RenderingDriver::createDevice(std::uint32_t device_index, const DesiredDeviceCaps& caps) {
+IDevice* RenderingDriver::createDevice(std::uint32_t device_index, const uxs::db::value& caps) {
     assert(!surfaces_.empty());
 
     auto& physical_device = *physical_devices_[device_index];
@@ -147,7 +147,7 @@ bool RenderingDriver::loadExtensionProperties() {
     return true;
 }
 
-bool RenderingDriver::createInstance(const ApplicationInfo& app_info) {
+bool RenderingDriver::createInstance(const uxs::db::value& app_info) {
     for (const char* extension : g_instance_extensions) {
         if (!isExtensionSupported(extension)) {
             logError(LOG_VK "instance extension '{}' is not supported", extension);
@@ -155,10 +155,15 @@ bool RenderingDriver::createInstance(const ApplicationInfo& app_info) {
         }
     }
 
+    const auto app_name = app_info.value<std::string>("name");
+    const auto version = app_info.value("version");
+
     const VkApplicationInfo vk_app_info{
         .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        .pApplicationName = app_info.name,
-        .applicationVersion = VK_MAKE_VERSION(app_info.version.major, app_info.version.minor, app_info.version.patch),
+        .pApplicationName = app_name.c_str(),
+        .applicationVersion = VK_MAKE_VERSION(version.value<std::uint32_t>("major"),
+                                              version.value<std::uint32_t>("minor"),
+                                              version.value<std::uint32_t>("patch")),
         .pEngineName = "App3D Vulkan Rendering Driver",
         .engineVersion = VK_MAKE_VERSION(1, 0, 0),
         .apiVersion = VK_MAKE_VERSION(1, 0, 0),
@@ -256,7 +261,7 @@ std::uint32_t PhysicalDevice::findSuitableQueueFamily(VkQueueFlags flags, std::u
     return it != queue_families_.end() ? std::uint32_t(it - queue_families_.begin()) : INVALID_UINT32_VALUE;
 }
 
-bool PhysicalDevice::isSuitableDevice(const DesiredDeviceCaps& caps) const {
+bool PhysicalDevice::isSuitableDevice(const uxs::db::value& caps) const {
     if (!features_.geometryShader) { return false; }
     return true;
 }

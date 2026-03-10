@@ -164,15 +164,20 @@ bool Surface::checkAndSelectSurfaceFeatures() {
     return true;
 }
 
-SwapChain* Surface::createSwapChain(Device& device, const SwapChainCreateInfo& create_info) {
-    auto swap_chain = swap_chain_ ? std::move(swap_chain_) : std::make_unique<SwapChain>(device, *this);
-    if (!swap_chain->create(create_info)) { return nullptr; }
-    swap_chain_ = std::move(swap_chain);
-    return swap_chain_.get();
-}
-
 void Surface::destroySwapChain() { swap_chain_.reset(); }
 
 //@{ ISurface
+
+ISwapChain* Surface::createSwapChain(IDevice& device, const uxs::db::value& create_info) {
+    if (!swap_chain_) {
+        auto swap_chain = std::make_unique<SwapChain>(static_cast<Device&>(device), *this);
+        if (!swap_chain->create(create_info)) { return nullptr; }
+        swap_chain_ = std::move(swap_chain);
+        return swap_chain_.get();
+    } else if (!swap_chain_->create(create_info)) {
+        return nullptr;
+    }
+    return swap_chain_.get();
+}
 
 //@}

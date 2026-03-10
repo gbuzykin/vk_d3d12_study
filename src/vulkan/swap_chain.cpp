@@ -22,7 +22,7 @@ SwapChain::~SwapChain() {
 }
 
 std::uint32_t SwapChain::chooseImageCount(const VkSurfaceCapabilitiesKHR& capabilities,
-                                          const SwapChainCreateInfo& create_info) {
+                                          const uxs::db::value& create_info) {
     std::uint32_t image_count = capabilities.minImageCount + 1;
     if (capabilities.maxImageCount > 0) {
         image_count = std::min<std::uint32_t>(image_count, capabilities.maxImageCount);
@@ -30,9 +30,11 @@ std::uint32_t SwapChain::chooseImageCount(const VkSurfaceCapabilitiesKHR& capabi
     return image_count;
 }
 
-VkExtent2D SwapChain::chooseImageSize(const VkSurfaceCapabilitiesKHR& capabilities,
-                                      const SwapChainCreateInfo& create_info) {
-    VkExtent2D image_size = {create_info.width, create_info.height};
+VkExtent2D SwapChain::chooseImageSize(const VkSurfaceCapabilitiesKHR& capabilities, const uxs::db::value& create_info) {
+    VkExtent2D image_size{
+        .width = create_info.value<std::uint32_t>("width"),
+        .height = create_info.value<std::uint32_t>("height"),
+    };
     if (capabilities.currentExtent.width == INVALID_UINT32_VALUE) {
         image_size.width = std::max<std::uint32_t>(
             std::min<std::uint32_t>(image_size.width, capabilities.maxImageExtent.width),
@@ -93,7 +95,7 @@ VkSurfaceFormatKHR SwapChain::chooseImageFormat(std::span<const VkSurfaceFormatK
     return formats[0];
 }
 
-bool SwapChain::create(const SwapChainCreateInfo& create_info) {
+bool SwapChain::create(const uxs::db::value& create_info) {
     device_.waitDevice();
     if (!surface_.loadCapabilities(device_.getPhysicalDevice())) { return false; }
 
@@ -111,6 +113,8 @@ bool SwapChain::create(const SwapChainCreateInfo& create_info) {
     images_.clear();
     image_views_.clear();
 
+    const std::uint32_t layer_count = std::max<std::uint32_t>(create_info.value<std::uint32_t>("layer_count"), 1);
+
     const VkSwapchainCreateInfoKHR vk_create_info{
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .surface = ~surface_,
@@ -118,7 +122,7 @@ bool SwapChain::create(const SwapChainCreateInfo& create_info) {
         .imageFormat = surface_.getImageFormat().format,
         .imageColorSpace = surface_.getImageFormat().colorSpace,
         .imageExtent = image_size_,
-        .imageArrayLayers = std::max<std::uint32_t>(create_info.layer_count, 1),
+        .imageArrayLayers = layer_count,
         .imageUsage = surface_.getImageUsage(),
         .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
         .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,

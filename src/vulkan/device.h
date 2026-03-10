@@ -97,7 +97,7 @@ class Device : public IDevice {
     Device(RenderingDriver& instance, PhysicalDevice& physical_device);
     ~Device() override;
 
-    bool create(const DesiredDeviceCaps& caps);
+    bool create(const uxs::db::value& caps);
     void finalize();
     bool waitDevice();
 
@@ -105,7 +105,6 @@ class Device : public IDevice {
     PhysicalDevice& getPhysicalDevice() { return physical_device_; }
 
     //@{ IDevice
-    ISwapChain* createSwapChain(ISurface& surface, const SwapChainCreateInfo& create_info) override;
     bool prepareTestScene(ISurface& surface) override;
     RenderTargetResult renderTestScene(ISwapChain& swap_chain) override;
     //@}

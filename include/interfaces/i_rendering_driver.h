@@ -1,5 +1,7 @@
 #pragma once
 
+#include <uxs/db/value.h>
+
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -26,57 +28,36 @@ constexpr std::uint32_t INVALID_UINT32_VALUE = std::numeric_limits<std::uint32_t
 
 enum class RenderTargetResult { SUCCESS = 0, OUT_OF_DATE, FAILED };
 
-struct ISurface;
+struct IDevice;
 struct ISwapChain;
-
-struct Version {
-    std::uint32_t major;
-    std::uint32_t minor;
-    std::uint32_t patch;
-};
-
-struct ApplicationInfo {
-    const char* name;
-    Version version;
-};
-
-struct DesiredDeviceCaps {
-    bool needs_compute;
-};
-
-struct SwapChainCreateInfo {
-    std::uint32_t width;
-    std::uint32_t height;
-    std::uint32_t layer_count;
-};
-
-struct WindowHandle {
-    alignas(std::alignment_of_v<void*>) std::uint8_t v[2 * sizeof(void*)];
-};
-
-struct IDevice {
-    virtual ~IDevice() = default;
-    virtual ISwapChain* createSwapChain(ISurface& surface, const SwapChainCreateInfo& create_info) = 0;
-    virtual bool prepareTestScene(ISurface& surface) = 0;
-    virtual RenderTargetResult renderTestScene(ISwapChain& swap_chain) = 0;
-};
 
 struct ISurface {
     virtual ~ISurface() = default;
+    virtual ISwapChain* createSwapChain(IDevice& device, const uxs::db::value& create_info) = 0;
 };
 
 struct ISwapChain {
     virtual ~ISwapChain() = default;
 };
 
+struct IDevice {
+    virtual ~IDevice() = default;
+    virtual bool prepareTestScene(ISurface& surface) = 0;
+    virtual RenderTargetResult renderTestScene(ISwapChain& swap_chain) = 0;
+};
+
+struct WindowHandle {
+    alignas(std::alignment_of_v<void*>) std::uint8_t v[2 * sizeof(void*)];
+};
+
 struct IRenderingDriver {
     virtual ~IRenderingDriver() = default;
-    virtual bool init(const ApplicationInfo& app_info) = 0;
+    virtual bool init(const uxs::db::value& app_info) = 0;
     virtual std::uint32_t getPhysicalDeviceCount() const = 0;
     virtual const char* getPhysicalDeviceName(std::uint32_t device_index) const = 0;
-    virtual bool isSuitablePhysicalDevice(std::uint32_t device_index, const DesiredDeviceCaps& caps) const = 0;
+    virtual bool isSuitablePhysicalDevice(std::uint32_t device_index, const uxs::db::value& caps) const = 0;
     virtual ISurface* createSurface(const WindowHandle& window_handle) = 0;
-    virtual IDevice* createDevice(std::uint32_t device_index, const DesiredDeviceCaps& caps) = 0;
+    virtual IDevice* createDevice(std::uint32_t device_index, const uxs::db::value& caps) = 0;
 };
 
 // Registered rendering driver descriptor

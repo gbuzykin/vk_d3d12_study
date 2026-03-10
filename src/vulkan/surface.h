@@ -10,7 +10,6 @@ namespace app3d::rel::vulkan {
 
 class RenderingDriver;
 class PhysicalDevice;
-class Device;
 class SwapChain;
 
 class Surface : public ISurface {
@@ -30,12 +29,12 @@ class Surface : public ISurface {
     bool loadPresentQueueFamilies(PhysicalDevice& physical_device);
     bool loadPresentModes(PhysicalDevice& physical_device);
     bool checkAndSelectSurfaceFeatures();
-    SwapChain* createSwapChain(Device& device, const SwapChainCreateInfo& create_info);
     void destroySwapChain();
 
     VkSurfaceKHR operator~() { return surface_; }
 
     //@{ ISurface
+    ISwapChain* createSwapChain(IDevice& device, const uxs::db::value& create_info) override;
     //@}
 
  private:
