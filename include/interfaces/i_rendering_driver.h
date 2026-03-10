@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <span>
 #include <string_view>
 #include <type_traits>
 
@@ -26,24 +27,101 @@ namespace app3d::rel {
 
 constexpr std::uint32_t INVALID_UINT32_VALUE = std::numeric_limits<std::uint32_t>::max();
 
-enum class RenderTargetResult { SUCCESS = 0, OUT_OF_DATE, FAILED };
+enum class ResultCode { SUCCESS = 0, FAILED, OUT_OF_DATE };
 
-struct IDevice;
-struct ISwapChain;
-
-struct ISurface {
-    virtual ~ISurface() = default;
-    virtual ISwapChain* createSwapChain(IDevice& device, const uxs::db::value& create_info) = 0;
+template<typename Ty>
+struct Vec2 {
+    Ty x, y;
 };
 
-struct ISwapChain {
-    virtual ~ISwapChain() = default;
+template<typename Ty>
+struct Vec3 {
+    Ty x, y, z;
+};
+
+template<typename Ty>
+struct Vec4 {
+    Ty x, y, z, w;
+};
+
+using Vec2i = Vec2<std::int32_t>;
+using Vec2u = Vec2<std::uint32_t>;
+using Vec2f = Vec2<float>;
+
+using Vec3i = Vec3<std::int32_t>;
+using Vec3u = Vec3<std::uint32_t>;
+using Vec3f = Vec3<float>;
+
+using Vec4i = Vec4<std::int32_t>;
+using Vec4u = Vec4<std::uint32_t>;
+using Vec4f = Vec4<float>;
+
+template<typename Ty>
+struct Extent2 {
+    Ty width, height;
+};
+
+template<typename Ty>
+struct Extent3 {
+    Ty width, height, depth;
+};
+
+using Extent2i = Extent2<std::int32_t>;
+using Extent2u = Extent2<std::uint32_t>;
+using Extent2f = Extent2<float>;
+
+using Extent3i = Extent2<std::int32_t>;
+using Extent3u = Extent2<std::uint32_t>;
+using Extent3f = Extent2<float>;
+
+struct Rect {
+    Vec2i offset;
+    Extent2u extent;
+};
+
+struct IShaderModule {
+    virtual ~IShaderModule() = default;
+};
+
+struct IPipeline {
+    virtual ~IPipeline() = default;
+};
+
+struct IBuffer {
+    virtual ~IBuffer() = default;
+    virtual ResultCode updateBuffer(std::size_t size, const void* data, std::size_t offset) = 0;
+};
+
+struct IRenderTarget {
+    virtual ~IRenderTarget() = default;
+    virtual ResultCode beginRenderTarget(const Vec4f& clear_color) = 0;
+    virtual ResultCode endRenderTarget() = 0;
+    virtual void setViewport(const Rect& rect, float z_near, float z_far) = 0;
+    virtual void setScissor(const Rect& rect) = 0;
+    virtual void bindPipeline(IPipeline& pipeline) = 0;
+    virtual void bindVertexBuffer(std::uint32_t first_binding, IBuffer& buffer, std::size_t offset) = 0;
+    virtual void drawGeometry(std::uint32_t vertex_count, std::uint32_t instance_count, std::uint32_t first_vertex,
+                              std::uint32_t first_instance) = 0;
 };
 
 struct IDevice {
     virtual ~IDevice() = default;
-    virtual bool prepareTestScene(ISurface& surface) = 0;
-    virtual RenderTargetResult renderTestScene(ISwapChain& swap_chain) = 0;
+    virtual IShaderModule* createShaderModule(std::span<const std::uint8_t> source_spirv,
+                                              const uxs::db::value& create_info = {}) = 0;
+    virtual IPipeline* createPipeline(IRenderTarget& render_target, std::span<IShaderModule* const> shader_modules,
+                                      const uxs::db::value& create_info = {}) = 0;
+    virtual IBuffer* createBuffer(std::size_t size) = 0;
+};
+
+struct ISwapChain {
+    virtual ~ISwapChain() = default;
+    virtual Extent2u getImageExtent() const = 0;
+    virtual IRenderTarget* createRenderTarget(const uxs::db::value& create_info = {}) = 0;
+};
+
+struct ISurface {
+    virtual ~ISurface() = default;
+    virtual ISwapChain* createSwapChain(IDevice& device, const uxs::db::value& create_info = {}) = 0;
 };
 
 struct WindowHandle {
@@ -52,7 +130,7 @@ struct WindowHandle {
 
 struct IRenderingDriver {
     virtual ~IRenderingDriver() = default;
-    virtual bool init(const uxs::db::value& app_info) = 0;
+    virtual ResultCode init(const uxs::db::value& app_info) = 0;
     virtual std::uint32_t getPhysicalDeviceCount() const = 0;
     virtual const char* getPhysicalDeviceName(std::uint32_t device_index) const = 0;
     virtual bool isSuitablePhysicalDevice(std::uint32_t device_index, const uxs::db::value& caps) const = 0;

@@ -6,8 +6,6 @@
 
 #include <vector>
 
-#define LOG_VK "vulkan: "
-
 namespace app3d::rel::vulkan {
 
 class Surface;
@@ -38,19 +36,19 @@ class PhysicalDevice {
     std::vector<VkQueueFamilyProperties> queue_families_;
 };
 
-class RenderingDriver : public IRenderingDriver {
+class RenderingDriver final : public IRenderingDriver {
  public:
     RenderingDriver();
     ~RenderingDriver() override;
 
     bool isExtensionSupported(const char* extension) const;
-    std::vector<std::unique_ptr<Surface>>& getSurfaces() { return surfaces_; }
+    const std::vector<std::unique_ptr<Surface>>& getSurfaces() { return surfaces_; }
     void destroySwapChains();
 
     VkInstance operator~() { return instance_; }
 
     //@{ IRenderingDriver
-    bool init(const uxs::db::value& app_info) override;
+    ResultCode init(const uxs::db::value& app_info) override;
     std::uint32_t getPhysicalDeviceCount() const override;
     const char* getPhysicalDeviceName(std::uint32_t device_index) const override;
     bool isSuitablePhysicalDevice(std::uint32_t device_index, const uxs::db::value& caps) const override;

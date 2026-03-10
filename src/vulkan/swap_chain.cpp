@@ -2,7 +2,7 @@
 
 #include "device.h"
 #include "object_destroyer.h"
-#include "rendering_driver.h"
+#include "render_target.h"
 #include "surface.h"
 
 #include "utils/logger.h"
@@ -17,7 +17,7 @@ using namespace app3d::rel::vulkan;
 SwapChain::SwapChain(Device& device, Surface& surface) : device_(device), surface_(surface) {}
 
 SwapChain::~SwapChain() {
-    destroyImageViews();
+    render_target_.reset();
     ObjectDestroyer<VkSwapchainKHR>::destroy(~device_, swap_chain_);
 }
 
@@ -30,7 +30,8 @@ std::uint32_t SwapChain::chooseImageCount(const VkSurfaceCapabilitiesKHR& capabi
     return image_count;
 }
 
-VkExtent2D SwapChain::chooseImageSize(const VkSurfaceCapabilitiesKHR& capabilities, const uxs::db::value& create_info) {
+VkExtent2D SwapChain::chooseImageExtent(const VkSurfaceCapabilitiesKHR& capabilities,
+                                        const uxs::db::value& create_info) {
     VkExtent2D image_size{
         .width = create_info.value<std::uint32_t>("width"),
         .height = create_info.value<std::uint32_t>("height"),
@@ -101,27 +102,26 @@ bool SwapChain::create(const uxs::db::value& create_info) {
 
     const auto& capabilities = surface_.getCapabilities();
 
-    image_count_ = chooseImageCount(capabilities, create_info);
-    image_size_ = chooseImageSize(capabilities, create_info);
+    const std::uint32_t image_count = chooseImageCount(capabilities, create_info);
+    image_extent_ = chooseImageExtent(capabilities, create_info);
 
-    if (image_size_.width == 0 || image_size_.height == 0) {
+    if (image_extent_.width == 0 || image_extent_.height == 0) {
         logError(LOG_VK "failed to choose swap chain image size");
         return false;
     }
 
-    destroyImageViews();
+    if (render_target_) { render_target_->destroyImageViews(); }
     images_.clear();
-    image_views_.clear();
 
     const std::uint32_t layer_count = std::max<std::uint32_t>(create_info.value<std::uint32_t>("layer_count"), 1);
 
-    const VkSwapchainCreateInfoKHR vk_create_info{
+    const VkSwapchainCreateInfoKHR swapchain_create_info{
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .surface = ~surface_,
-        .minImageCount = image_count_,
+        .minImageCount = image_count,
         .imageFormat = surface_.getImageFormat().format,
         .imageColorSpace = surface_.getImageFormat().colorSpace,
-        .imageExtent = image_size_,
+        .imageExtent = image_extent_,
         .imageArrayLayers = layer_count,
         .imageUsage = surface_.getImageUsage(),
         .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
@@ -132,29 +132,37 @@ bool SwapChain::create(const uxs::db::value& create_info) {
         .oldSwapchain = swap_chain_,
     };
 
-    VkResult result = vkCreateSwapchainKHR(~device_, &vk_create_info, nullptr, &swap_chain_);
+    VkResult result = vkCreateSwapchainKHR(~device_, &swapchain_create_info, nullptr, &swap_chain_);
     if (result != VK_SUCCESS || swap_chain_ == VK_NULL_HANDLE) {
         logError(LOG_VK "couldn't create a swap chain");
         return false;
     }
 
-    ObjectDestroyer<VkSwapchainKHR>::destroy(~device_, vk_create_info.oldSwapchain);
+    ObjectDestroyer<VkSwapchainKHR>::destroy(~device_, swapchain_create_info.oldSwapchain);
 
     if (!loadImageHandles()) { return false; }
-    if (!createImageViews(surface_.getImageFormat().format, VK_IMAGE_ASPECT_COLOR_BIT)) { return false; }
+    if (render_target_ && !render_target_->createImageViews()) { return false; }
 
     return true;
 }
 
-RenderTargetResult SwapChain::acquireImage(std::uint64_t timeout, VkSemaphore semaphore, VkFence fence,
-                                           std::uint32_t& image_index) {
+ResultCode SwapChain::acquireImage(std::uint64_t timeout, VkSemaphore semaphore, VkFence fence,
+                                   std::uint32_t& image_index) {
     VkResult result = vkAcquireNextImageKHR(~device_, swap_chain_, timeout, semaphore, fence, &image_index);
-    if (result == VK_ERROR_OUT_OF_DATE_KHR) { return RenderTargetResult::OUT_OF_DATE; }
-    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) { return RenderTargetResult::FAILED; }
-    return RenderTargetResult::SUCCESS;
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) { return ResultCode::OUT_OF_DATE; }
+    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) { return ResultCode::FAILED; }
+    return ResultCode::SUCCESS;
 }
 
 //@{ ISwapChain
+
+IRenderTarget* SwapChain::createRenderTarget(const uxs::db::value& create_info) {
+    auto render_target = std::make_unique<RenderTarget>(device_, *this);
+    if (!render_target->create(create_info)) { return nullptr; }
+    if (!render_target->createImageViews()) { return nullptr; }
+    render_target_ = std::move(render_target);
+    return render_target_.get();
+}
 
 //@}
 
@@ -174,37 +182,4 @@ bool SwapChain::loadImageHandles() {
     }
 
     return true;
-}
-
-bool SwapChain::createImageViews(VkFormat format, VkImageAspectFlags aspectFlags) {
-    image_views_.resize(images_.size(), VK_NULL_HANDLE);
-
-    for (std::uint32_t n = 0; n < std::uint32_t(images_.size()); ++n) {
-        const VkImageViewCreateInfo create_info{
-            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .image = images_[n],
-            .viewType = VK_IMAGE_VIEW_TYPE_2D,
-            .format = format,
-            .subresourceRange =
-                {
-                    .aspectMask = aspectFlags,
-                    .baseMipLevel = 0,
-                    .levelCount = 1,
-                    .baseArrayLayer = 0,
-                    .layerCount = 1,
-                },
-        };
-
-        VkResult result = vkCreateImageView(~device_, &create_info, nullptr, &image_views_[n]);
-        if (result != VK_SUCCESS) {
-            logError(LOG_VK "couldn't create image view for a swap chain image");
-            return false;
-        }
-    }
-
-    return true;
-}
-
-void SwapChain::destroyImageViews() {
-    for (const auto& image_view : image_views_) { ObjectDestroyer<VkImageView>::destroy(~device_, image_view); }
 }

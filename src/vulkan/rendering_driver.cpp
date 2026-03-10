@@ -57,19 +57,19 @@ void RenderingDriver::destroySwapChains() {
 
 //@{ IRenderingDriver
 
-bool RenderingDriver::init(const uxs::db::value& app_info) {
+ResultCode RenderingDriver::init(const uxs::db::value& app_info) {
     if (!physical_devices_.empty()) {
         logError(LOG_VK "rendering driver is already initialized");
-        return false;
+        return ResultCode::FAILED;
     }
 
-    if (!loadVulkanLoaderLibrary()) { return false; }
-    if (!loadExtensionProperties()) { return false; }
-    if (!createInstance(app_info)) { return false; }
-    if (!loadPhysicalDeviceList()) { return false; }
+    if (!loadVulkanLoaderLibrary()) { return ResultCode::FAILED; }
+    if (!loadExtensionProperties()) { return ResultCode::FAILED; }
+    if (!createInstance(app_info)) { return ResultCode::FAILED; }
+    if (!loadPhysicalDeviceList()) { return ResultCode::FAILED; }
 
     surfaces_.reserve(4);
-    return true;
+    return ResultCode::SUCCESS;
 }
 
 std::uint32_t RenderingDriver::getPhysicalDeviceCount() const { return std::uint32_t(physical_devices_.size()); }
@@ -93,8 +93,7 @@ bool RenderingDriver::isSuitablePhysicalDevice(std::uint32_t device_index, const
 ISurface* RenderingDriver::createSurface(const WindowHandle& window_handle) {
     auto surfaces = std::make_unique<Surface>(*this);
     if (!surfaces->create(window_handle)) { return nullptr; }
-    surfaces_.emplace_back(std::move(surfaces));
-    return surfaces_.back().get();
+    return surfaces_.emplace_back(std::move(surfaces)).get();
 }
 
 IDevice* RenderingDriver::createDevice(std::uint32_t device_index, const uxs::db::value& caps) {

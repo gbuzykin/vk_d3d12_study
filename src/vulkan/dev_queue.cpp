@@ -1,7 +1,6 @@
 #include "dev_queue.h"
 
 #include "device.h"
-#include "rendering_driver.h"
 
 #include "utils/logger.h"
 
@@ -39,8 +38,8 @@ bool DevQueue::submitCommandBuffers(MultiSpan<const VkSemaphore, const VkPipelin
     return true;
 }
 
-RenderTargetResult DevQueue::presentImages(std::span<const VkSemaphore> rendering_semaphores,
-                                           MultiSpan<const VkSwapchainKHR, const std::uint32_t> images_to_present) {
+ResultCode DevQueue::presentImages(std::span<const VkSemaphore> rendering_semaphores,
+                                   MultiSpan<const VkSwapchainKHR, const std::uint32_t> images_to_present) {
     const VkPresentInfoKHR present_info{
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = std::uint32_t(rendering_semaphores.size()),
@@ -51,7 +50,7 @@ RenderTargetResult DevQueue::presentImages(std::span<const VkSemaphore> renderin
     };
 
     VkResult result = vkQueuePresentKHR(queue_, &present_info);
-    if (result == VK_ERROR_OUT_OF_DATE_KHR) { return RenderTargetResult::OUT_OF_DATE; }
-    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) { return RenderTargetResult::FAILED; }
-    return RenderTargetResult::SUCCESS;
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) { return ResultCode::OUT_OF_DATE; }
+    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) { return ResultCode::FAILED; }
+    return ResultCode::SUCCESS;
 }

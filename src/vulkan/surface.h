@@ -12,7 +12,7 @@ class RenderingDriver;
 class PhysicalDevice;
 class SwapChain;
 
-class Surface : public ISurface {
+class Surface final : public ISurface {
  public:
     explicit Surface(RenderingDriver& instance);
     ~Surface() override;
