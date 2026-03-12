@@ -12,6 +12,8 @@ class Buffer : public IBuffer {
  public:
     explicit Buffer(Device& device);
     ~Buffer() override;
+    Buffer(const Buffer&) = delete;
+    Buffer& operator=(const Buffer&) = delete;
 
     bool create(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlagBits desired_properties);
 

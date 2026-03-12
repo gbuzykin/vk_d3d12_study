@@ -16,6 +16,8 @@ class SwapChain final : public ISwapChain {
  public:
     SwapChain(Device& device, Surface& surface);
     ~SwapChain() override;
+    SwapChain(const SwapChain&) = delete;
+    SwapChain& operator=(const SwapChain&) = delete;
 
     std::uint32_t getImageCount() const { return std::uint32_t(images_.size()); }
     VkImage getImage(std::uint32_t image_index) const { return images_[image_index]; }

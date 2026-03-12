@@ -17,6 +17,8 @@ class MappedMemory {
  public:
     MappedMemory(VkDevice device, VkDeviceMemory memory_object) : device_(device), memory_object_(memory_object) {}
     ~MappedMemory() { release(); }
+    MappedMemory(const MappedMemory&) = delete;
+    MappedMemory& operator=(const MappedMemory&) = delete;
 
     void* ptr() const { return ptr_; }
     bool map(VkDeviceSize offset, VkDeviceSize data_size);
@@ -38,6 +40,8 @@ class Device final : public IDevice {
  public:
     Device(RenderingDriver& instance, PhysicalDevice& physical_device);
     ~Device() override;
+    Device(const Device&) = delete;
+    Device& operator=(const Device&) = delete;
 
     bool create(const uxs::db::value& caps);
     void finalize();
@@ -72,8 +76,8 @@ class Device final : public IDevice {
     PhysicalDevice& physical_device_;
     VkDevice device_{VK_NULL_HANDLE};
     DevQueue graphics_queue_;
-    DevQueue present_queue_;
     DevQueue compute_queue_;
+    DevQueue present_queue_;
 
     VkCommandPool command_pool_{VK_NULL_HANDLE};
     std::vector<VkCommandBuffer> command_buffers_;

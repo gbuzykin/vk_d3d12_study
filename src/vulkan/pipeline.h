@@ -13,6 +13,8 @@ class Pipeline final : public IPipeline {
  public:
     explicit Pipeline(Device& device);
     ~Pipeline() override;
+    Pipeline(const Pipeline&) = delete;
+    Pipeline& operator=(const Pipeline&) = delete;
 
     bool create(RenderTarget& render_target, std::span<const VkPipelineShaderStageCreateInfo> shader_stage_create_infos,
                 const uxs::db::value& create_info);

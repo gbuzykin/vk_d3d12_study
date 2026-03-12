@@ -52,8 +52,8 @@ bool Device::create(const uxs::db::value& caps) {
     std::uint32_t queue_family_count = 0;
     std::array<VkDeviceQueueCreateInfo, 8> queue_create_infos;
 
-    const auto add_queue_create_info = [&queue_create_infos, &queue_family_count](std::uint32_t family_index,
-                                                                                  std::span<const float> priorities) {
+    const auto add_queue_family = [&queue_create_infos, &queue_family_count](std::uint32_t family_index,
+                                                                             std::span<const float> priorities) {
         if (!std::ranges::any_of(std::span{queue_create_infos.data(), queue_family_count},
                                  [family_index](const auto& info) { return info.queueFamilyIndex == family_index; })) {
             queue_create_infos[queue_family_count++] = {
@@ -65,36 +65,40 @@ bool Device::create(const uxs::db::value& caps) {
         }
     };
 
-    graphics_queue_ = DevQueue{physical_device_.findSuitableQueueFamily(VK_QUEUE_GRAPHICS_BIT)};
+    graphics_queue_.setFamilyIndex(physical_device_.findSuitableQueueFamily(VK_QUEUE_GRAPHICS_BIT));
     if (graphics_queue_.getFamilyIndex() == INVALID_UINT32_VALUE) {
         logError(LOG_VK "couldn't obtain graphics queue family index");
         return false;
     }
 
     const std::array priority{1.0f};
-    add_queue_create_info(graphics_queue_.getFamilyIndex(), priority);
-
-    for (const auto& surface : instance_.getSurfaces()) {
-        const std::uint32_t present_queue_family_index = surface->getPresentQueueFamily();
-        if (present_queue_.getFamilyIndex() == INVALID_UINT32_VALUE) {
-            present_queue_ = DevQueue{present_queue_family_index};
-        } else if (present_queue_.getFamilyIndex() != present_queue_family_index) {
-            logError(LOG_VK "inconsistent queue families for surfaces");
-            return false;
-        }
-    }
-
-    add_queue_create_info(present_queue_.getFamilyIndex(), priority);
+    add_queue_family(graphics_queue_.getFamilyIndex(), priority);
 
     if (caps.value<bool>("needs_compute")) {
-        compute_queue_ = DevQueue{physical_device_.findSuitableQueueFamily(VK_QUEUE_COMPUTE_BIT)};
+        compute_queue_.setFamilyIndex(physical_device_.findSuitableQueueFamily(VK_QUEUE_COMPUTE_BIT));
         if (compute_queue_.getFamilyIndex() == INVALID_UINT32_VALUE) {
             logError(LOG_VK "couldn't obtain compute queue family index");
             return false;
         }
 
-        add_queue_create_info(compute_queue_.getFamilyIndex(), priority);
+        add_queue_family(compute_queue_.getFamilyIndex(), priority);
     }
+
+    for (const auto& surface : instance_.getSurfaces()) {
+        const std::uint32_t family_index = surface->getPresentQueueFamily();
+        if (present_queue_.getFamilyIndex() == INVALID_UINT32_VALUE) {
+            if (family_index == INVALID_UINT32_VALUE) {
+                logError(LOG_VK "couldn't obtain present queue family index");
+                return false;
+            }
+            present_queue_.setFamilyIndex(family_index);
+        } else if (present_queue_.getFamilyIndex() != family_index) {
+            logError(LOG_VK "inconsistent present queue families");
+            return false;
+        }
+    }
+
+    add_queue_family(present_queue_.getFamilyIndex(), priority);
 
     const VkDeviceCreateInfo create_info{
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
@@ -139,8 +143,8 @@ bool Device::create(const uxs::db::value& caps) {
 #include "vulkan_function_list.inl"
 
     graphics_queue_.loadQueueHandle(*this);
-    present_queue_.loadQueueHandle(*this);
     compute_queue_.loadQueueHandle(*this);
+    present_queue_.loadQueueHandle(*this);
 
     if (!createCommandPool(VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, graphics_queue_.getFamilyIndex(),
                            command_pool_)) {

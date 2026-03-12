@@ -12,6 +12,8 @@ class ShaderModule final : public IShaderModule {
  public:
     explicit ShaderModule(Device& device);
     ~ShaderModule() override;
+    ShaderModule(const ShaderModule&) = delete;
+    ShaderModule& operator=(const ShaderModule&) = delete;
 
     bool create(std::span<const std::uint8_t> source_spirv, const uxs::db::value& create_info);
 

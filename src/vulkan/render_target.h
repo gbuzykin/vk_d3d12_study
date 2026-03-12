@@ -16,6 +16,8 @@ class RenderTarget final : public IRenderTarget {
  public:
     RenderTarget(Device& device, SwapChain& swap_chain);
     ~RenderTarget() override;
+    RenderTarget(const RenderTarget&) = delete;
+    RenderTarget& operator=(const RenderTarget&) = delete;
 
     bool create(const uxs::db::value& create_info);
     bool createImageViews();

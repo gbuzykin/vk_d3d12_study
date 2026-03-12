@@ -14,6 +14,8 @@ class Device;
 class PhysicalDevice {
  public:
     explicit PhysicalDevice(VkPhysicalDevice physical_device);
+    PhysicalDevice(const PhysicalDevice&) = delete;
+    PhysicalDevice& operator=(const PhysicalDevice&) = delete;
 
     bool isExtensionSupported(const char* extension) const;
     const VkPhysicalDeviceProperties& getProperties() const { return properties_; }
@@ -40,6 +42,8 @@ class RenderingDriver final : public IRenderingDriver {
  public:
     RenderingDriver();
     ~RenderingDriver() override;
+    RenderingDriver(const RenderingDriver&) = delete;
+    RenderingDriver& operator=(const RenderingDriver&) = delete;
 
     bool isExtensionSupported(const char* extension) const;
     const std::vector<std::unique_ptr<Surface>>& getSurfaces() { return surfaces_; }
