@@ -30,8 +30,7 @@ class Buffer : public IBuffer {
     VkBuffer buffer_{VK_NULL_HANDLE};
     VkDeviceMemory memory_object_{VK_NULL_HANDLE};
 
-    bool createBuffer(VkDeviceSize size, VkBufferUsageFlags usage);
-    bool allocateAndBindMemoryObjectToBuffer(VkBuffer buffer, VkMemoryPropertyFlagBits desired_properties);
+    bool allocateAndBindMemoryObjectToBuffer(VkMemoryPropertyFlagBits desired_properties);
 };
 
 }  // namespace app3d::rel::vulkan

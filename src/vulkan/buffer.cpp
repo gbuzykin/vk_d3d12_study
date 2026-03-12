@@ -21,8 +21,21 @@ Buffer::~Buffer() {
 }
 
 bool Buffer::create(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlagBits desired_properties) {
-    if (!createBuffer(size, usage)) { return false; }
-    if (!allocateAndBindMemoryObjectToBuffer(buffer_, desired_properties)) { return false; }
+    const VkBufferCreateInfo create_info{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = size,
+        .usage = usage,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    };
+
+    VkResult result = vkCreateBuffer(~device_, &create_info, nullptr, &buffer_);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't create a buffer");
+        return false;
+    }
+
+    if (!allocateAndBindMemoryObjectToBuffer(desired_properties)) { return false; }
+
     size_ = size;
     return true;
 }
@@ -40,26 +53,9 @@ ResultCode Buffer::updateBuffer(std::size_t size, const void* data, std::size_t 
 
 //@}
 
-bool Buffer::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage) {
-    const VkBufferCreateInfo create_info{
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = size,
-        .usage = usage,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-    };
-
-    VkResult result = vkCreateBuffer(~device_, &create_info, nullptr, &buffer_);
-    if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't create a buffer");
-        return false;
-    }
-
-    return true;
-}
-
-bool Buffer::allocateAndBindMemoryObjectToBuffer(VkBuffer buffer, VkMemoryPropertyFlagBits desired_properties) {
+bool Buffer::allocateAndBindMemoryObjectToBuffer(VkMemoryPropertyFlagBits desired_properties) {
     VkMemoryRequirements memory_requirements{};
-    vkGetBufferMemoryRequirements(~device_, buffer, &memory_requirements);
+    vkGetBufferMemoryRequirements(~device_, buffer_, &memory_requirements);
 
     const auto& memory_properties = device_.getPhysicalDevice().getMemoryProperties();
 
@@ -84,7 +80,7 @@ bool Buffer::allocateAndBindMemoryObjectToBuffer(VkBuffer buffer, VkMemoryProper
         return false;
     }
 
-    VkResult result = vkBindBufferMemory(~device_, buffer, memory_object_, 0);
+    VkResult result = vkBindBufferMemory(~device_, buffer_, memory_object_, 0);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't bind memory object to a buffer");
         return false;

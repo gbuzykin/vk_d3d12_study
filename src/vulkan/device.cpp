@@ -30,12 +30,10 @@ const std::array g_device_extensions{
 // Device class implementation
 
 Device::Device(RenderingDriver& instance, PhysicalDevice& physical_device)
-    : instance_(instance), physical_device_(physical_device) {}
+    : instance_(instance), physical_device_(physical_device), graphics_queue_(*this), compute_queue_(*this),
+      transfer_queue_(*this), present_queue_(*this) {}
 
-Device::~Device() {
-    ObjectDestroyer<VkCommandPool>::destroy(device_, command_pool_);
-    ObjectDestroyer<VkDevice>::destroy(device_);
-}
+Device::~Device() { ObjectDestroyer<VkDevice>::destroy(device_); }
 
 bool Device::create(const uxs::db::value& caps) {
     for (const char* extension : g_device_extensions) {
@@ -52,10 +50,26 @@ bool Device::create(const uxs::db::value& caps) {
     std::uint32_t queue_family_count = 0;
     std::array<VkDeviceQueueCreateInfo, 8> queue_create_infos;
 
-    const auto add_queue_family = [&queue_create_infos, &queue_family_count](std::uint32_t family_index,
-                                                                             std::span<const float> priorities) {
-        if (!std::ranges::any_of(std::span{queue_create_infos.data(), queue_family_count},
-                                 [family_index](const auto& info) { return info.queueFamilyIndex == family_index; })) {
+    const auto is_queue_family_used = [&queue_create_infos, &queue_family_count](std::uint32_t family_index) {
+        return std::ranges::any_of(std::span{queue_create_infos.data(), queue_family_count},
+                                   [family_index](const auto& info) { return info.queueFamilyIndex == family_index; });
+    };
+
+    const auto select_queue_family = [&queue_create_infos, &queue_family_count, &is_queue_family_used,
+                                      &physical_device = physical_device_](VkQueueFlags flags) {
+        std::uint32_t selected_family_index = INVALID_UINT32_VALUE;
+        for (std::uint32_t n = 0; n <= queue_family_count; ++n) {
+            const std::uint32_t family_index = physical_device.findSuitableQueueFamily(flags, n);
+            if (family_index == INVALID_UINT32_VALUE) { break; }
+            selected_family_index = family_index;
+            if (!is_queue_family_used(selected_family_index)) { break; }
+        }
+        return selected_family_index;
+    };
+
+    const auto add_queue_family = [&queue_create_infos, &queue_family_count, &is_queue_family_used](
+                                      std::uint32_t family_index, std::span<const float> priorities) {
+        if (!is_queue_family_used(family_index)) {
             queue_create_infos[queue_family_count++] = {
                 .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
                 .queueFamilyIndex = family_index,
@@ -75,25 +89,33 @@ bool Device::create(const uxs::db::value& caps) {
     add_queue_family(graphics_queue_.getFamilyIndex(), priority);
 
     if (caps.value<bool>("needs_compute")) {
-        compute_queue_.setFamilyIndex(physical_device_.findSuitableQueueFamily(VK_QUEUE_COMPUTE_BIT));
+        compute_queue_.setFamilyIndex(select_queue_family(VK_QUEUE_COMPUTE_BIT));
         if (compute_queue_.getFamilyIndex() == INVALID_UINT32_VALUE) {
             logError(LOG_VK "couldn't obtain compute queue family index");
             return false;
         }
-
         add_queue_family(compute_queue_.getFamilyIndex(), priority);
     }
 
+    transfer_queue_.setFamilyIndex(select_queue_family(VK_QUEUE_TRANSFER_BIT));
+    if (transfer_queue_.getFamilyIndex() == INVALID_UINT32_VALUE) {
+        logError(LOG_VK "couldn't obtain transfer queue family index");
+        return false;
+    }
+    add_queue_family(transfer_queue_.getFamilyIndex(), priority);
+
     for (const auto& surface : instance_.getSurfaces()) {
-        const std::uint32_t family_index = surface->getPresentQueueFamily();
+        std::uint32_t selected_family_index = INVALID_UINT32_VALUE;
+        for (std::uint32_t n = 0; n <= queue_family_count; ++n) {
+            const std::uint32_t family_index = surface->getPresentQueueFamily(n);
+            if (family_index == INVALID_UINT32_VALUE) { break; }
+            selected_family_index = family_index;
+            if (!is_queue_family_used(selected_family_index)) { break; }
+        }
         if (present_queue_.getFamilyIndex() == INVALID_UINT32_VALUE) {
-            if (family_index == INVALID_UINT32_VALUE) {
-                logError(LOG_VK "couldn't obtain present queue family index");
-                return false;
-            }
-            present_queue_.setFamilyIndex(family_index);
-        } else if (present_queue_.getFamilyIndex() != family_index) {
-            logError(LOG_VK "inconsistent present queue families");
+            present_queue_.setFamilyIndex(selected_family_index);
+        } else if (present_queue_.getFamilyIndex() != selected_family_index) {
+            logError(LOG_VK "inconsistent queue families for surfaces");
             return false;
         }
     }
@@ -142,16 +164,12 @@ bool Device::create(const uxs::db::value& caps) {
 
 #include "vulkan_function_list.inl"
 
-    graphics_queue_.loadQueueHandle(*this);
-    compute_queue_.loadQueueHandle(*this);
-    present_queue_.loadQueueHandle(*this);
+    if (!graphics_queue_.create()) { return false; }
+    if (!compute_queue_.create()) { return false; }
+    if (!transfer_queue_.create()) { return false; }
+    if (!present_queue_.create()) { return false; }
 
-    if (!createCommandPool(VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, graphics_queue_.getFamilyIndex(),
-                           command_pool_)) {
-        return false;
-    }
-
-    transfer_command_buffer_ = CommandBuffer::wrap(obtainCommandBuffer());
+    transfer_command_buffer_ = CommandBuffer::wrap(transfer_queue_.obtainCommandBuffer());
 
     shader_modules_.reserve(16);
     pipelines_.reserve(16);
@@ -166,6 +184,10 @@ void Device::finalize() {
     buffers_.clear();
     pipelines_.clear();
     shader_modules_.clear();
+    graphics_queue_.destroy();
+    compute_queue_.destroy();
+    transfer_queue_.destroy();
+    present_queue_.destroy();
 }
 
 bool Device::waitDevice() {
@@ -219,25 +241,6 @@ bool Device::resetFences(std::span<const VkFence> fences) {
     return true;
 }
 
-VkCommandBuffer Device::obtainCommandBuffer() {
-    if (used_command_buffers_count_ == command_buffers_.size()) {
-        command_buffers_.resize(command_buffers_.size() + 5);
-        if (!allocateCommandBuffers(command_pool_, VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-                                    std::span(command_buffers_.data() + used_command_buffers_count_,
-                                              command_buffers_.size() - used_command_buffers_count_))) {
-            return VK_NULL_HANDLE;
-        }
-    }
-    return command_buffers_[used_command_buffers_count_++];
-}
-
-void Device::releaseCommandBuffer(VkCommandBuffer command_buffer) {
-    auto found_it = std::ranges::find(command_buffers_, command_buffer);
-    if (found_it == command_buffers_.end()) { return; }
-    for (auto it = found_it + 1; it != command_buffers_.end(); ++it) { *(it - 1) = *it; }
-    --used_command_buffers_count_;
-}
-
 bool Device::writeToDeviceLocalMemory(VkDeviceSize data_size, const void* data, VkBuffer dst, VkDeviceSize dst_offset,
                                       VkAccessFlags dst_current_access, VkAccessFlags dst_new_access,
                                       VkPipelineStageFlags dst_generating_stages,
@@ -287,7 +290,7 @@ bool Device::writeToDeviceLocalMemory(VkDeviceSize data_size, const void* data, 
     ObjectDestroyer<VkFence> fence(device_);
     if (!createFence(false, ~fence)) { return false; }
 
-    if (!graphics_queue_.submitCommandBuffers({}, std::array{~transfer_command_buffer_}, signal_semaphores, ~fence)) {
+    if (!transfer_queue_.submitCommandBuffers({}, std::array{~transfer_command_buffer_}, signal_semaphores, ~fence)) {
         return false;
     }
 
@@ -336,40 +339,6 @@ IBuffer* Device::createBuffer(std::size_t size) {
 }
 
 //@}
-
-bool Device::createCommandPool(VkCommandPoolCreateFlags flags, std::uint32_t queue_family, VkCommandPool& command_pool) {
-    const VkCommandPoolCreateInfo create_info{
-        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-        .flags = flags,
-        .queueFamilyIndex = queue_family,
-    };
-
-    VkResult result = vkCreateCommandPool(device_, &create_info, nullptr, &command_pool);
-    if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't create command pool");
-        return false;
-    }
-
-    return true;
-}
-
-bool Device::allocateCommandBuffers(VkCommandPool command_pool, VkCommandBufferLevel level,
-                                    std::span<VkCommandBuffer> command_buffers) {
-    const VkCommandBufferAllocateInfo allocate_info{
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool = command_pool,
-        .level = level,
-        .commandBufferCount = std::uint32_t(command_buffers.size()),
-    };
-
-    VkResult result = vkAllocateCommandBuffers(device_, &allocate_info, command_buffers.data());
-    if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't allocate command buffers");
-        return false;
-    }
-
-    return true;
-}
 
 bool MappedMemory::map(VkDeviceSize offset, VkDeviceSize data_size) {
     VkResult result = vkMapMemory(device_, memory_object_, offset, data_size, 0, &ptr_);
