@@ -58,11 +58,6 @@ void RenderingDriver::destroySwapChains() {
 //@{ IRenderingDriver
 
 ResultCode RenderingDriver::init(const uxs::db::value& app_info) {
-    if (!physical_devices_.empty()) {
-        logError(LOG_VK "rendering driver is already initialized");
-        return ResultCode::FAILED;
-    }
-
     if (!loadVulkanLoaderLibrary()) { return ResultCode::FAILED; }
     if (!loadExtensionProperties()) { return ResultCode::FAILED; }
     if (!createInstance(app_info)) { return ResultCode::FAILED; }
@@ -75,18 +70,10 @@ ResultCode RenderingDriver::init(const uxs::db::value& app_info) {
 std::uint32_t RenderingDriver::getPhysicalDeviceCount() const { return std::uint32_t(physical_devices_.size()); }
 
 const char* RenderingDriver::getPhysicalDeviceName(std::uint32_t device_index) const {
-    if (device_index >= std::uint32_t(physical_devices_.size())) {
-        logError(LOG_VK "invalid physical device index");
-        return nullptr;
-    }
     return physical_devices_[device_index]->getProperties().deviceName;
 }
 
 bool RenderingDriver::isSuitablePhysicalDevice(std::uint32_t device_index, const uxs::db::value& caps) const {
-    if (device_index >= std::uint32_t(physical_devices_.size())) {
-        logError(LOG_VK "invalid physical device index");
-        return false;
-    }
     return physical_devices_[device_index]->isSuitableDevice(caps);
 }
 
@@ -97,20 +84,7 @@ ISurface* RenderingDriver::createSurface(const WindowHandle& window_handle) {
 }
 
 IDevice* RenderingDriver::createDevice(std::uint32_t device_index, const uxs::db::value& caps) {
-    if (device_) {
-        logError(LOG_VK "device is already created");
-        return nullptr;
-    }
-
-    if (device_index >= static_cast<std::uint32_t>(physical_devices_.size())) {
-        logError(LOG_VK "invalid physical device index");
-        return nullptr;
-    }
-
-    if (surfaces_.empty()) {
-        logError(LOG_VK "no rendering surfaces");
-        return nullptr;
-    }
+    assert(!surfaces_.empty());
 
     auto& physical_device = *physical_devices_[device_index];
 

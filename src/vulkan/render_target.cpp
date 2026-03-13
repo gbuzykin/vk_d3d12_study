@@ -157,6 +157,7 @@ void RenderTarget::destroyImageViews() {
         ObjectDestroyer<VkFramebuffer>::destroy(~device_, item.framebuffer);
         ObjectDestroyer<VkImageView>::destroy(~device_, item.image_view);
     }
+    image_views_.clear();
 }
 
 //@{ IRenderTarget
@@ -195,10 +196,11 @@ ResultCode RenderTarget::beginRenderTarget(const Vec4f& clear_color) {
     }
 
     const auto& image_extent = swap_chain_.getImageExtent();
-    command_buffer_.beginRenderPass(render_pass_, image_views_[image_index].framebuffer,
-                                    VkRect2D{.extent = {.width = image_extent.width, .height = image_extent.height}},
-                                    std::array{VkClearValue{.color = {{0.1f, 0.2f, 0.3f, 1.0f}}}},
-                                    VK_SUBPASS_CONTENTS_INLINE);
+    command_buffer_.beginRenderPass(
+        render_pass_, image_views_[image_index].framebuffer,
+        VkRect2D{.extent = {.width = image_extent.width, .height = image_extent.height}},
+        std::array{VkClearValue{.color = {{clear_color.x, clear_color.y, clear_color.z, clear_color.w}}}},
+        VK_SUBPASS_CONTENTS_INLINE);
 
     current_image_index_ = image_index;
     return ResultCode::SUCCESS;

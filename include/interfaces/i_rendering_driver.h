@@ -27,7 +27,7 @@ namespace app3d::rel {
 
 constexpr std::uint32_t INVALID_UINT32_VALUE = std::numeric_limits<std::uint32_t>::max();
 
-enum class ResultCode { SUCCESS = 0, FAILED, OUT_OF_DATE };
+enum class ResultCode { SUCCESS = 0, FAILED, OUT_OF_DATE };  // TODO:
 
 template<typename Ty>
 struct Vec2 {
@@ -74,7 +74,7 @@ using Extent3i = Extent2<std::int32_t>;
 using Extent3u = Extent2<std::uint32_t>;
 using Extent3f = Extent2<float>;
 
-struct Rect {
+struct Rect {  // TODO:
     Vec2i offset;
     Extent2u extent;
 };
@@ -94,7 +94,7 @@ struct IBuffer {
 
 struct IRenderTarget {
     virtual ~IRenderTarget() = default;
-    virtual ResultCode beginRenderTarget(const Vec4f& clear_color) = 0;
+    virtual ResultCode beginRenderTarget(const Vec4f& clear_color) = 0;  // TODO:
     virtual ResultCode endRenderTarget() = 0;
     virtual void setViewport(const Rect& rect, float z_near, float z_far) = 0;
     virtual void setScissor(const Rect& rect) = 0;

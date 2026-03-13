@@ -55,7 +55,7 @@ bool Device::create(const uxs::db::value& caps) {
                                    [family_index](const auto& info) { return info.queueFamilyIndex == family_index; });
     };
 
-    const auto select_queue_family = [&queue_create_infos, &queue_family_count, &is_queue_family_used,
+    const auto select_queue_family = [&queue_family_count, &is_queue_family_used,
                                       &physical_device = physical_device_](VkQueueFlags flags) {
         std::uint32_t selected_family_index = INVALID_UINT32_VALUE;
         for (std::uint32_t n = 0; n <= queue_family_count; ++n) {
@@ -105,16 +105,10 @@ bool Device::create(const uxs::db::value& caps) {
     add_queue_family(transfer_queue_.getFamilyIndex(), priority);
 
     for (const auto& surface : instance_.getSurfaces()) {
-        std::uint32_t selected_family_index = INVALID_UINT32_VALUE;
-        for (std::uint32_t n = 0; n <= queue_family_count; ++n) {
-            const std::uint32_t family_index = surface->getPresentQueueFamily(n);
-            if (family_index == INVALID_UINT32_VALUE) { break; }
-            selected_family_index = family_index;
-            if (!is_queue_family_used(selected_family_index)) { break; }
-        }
+        const std::uint32_t family_index = surface->getPresentQueueFamily();
         if (present_queue_.getFamilyIndex() == INVALID_UINT32_VALUE) {
-            present_queue_.setFamilyIndex(selected_family_index);
-        } else if (present_queue_.getFamilyIndex() != selected_family_index) {
+            present_queue_.setFamilyIndex(family_index);
+        } else if (present_queue_.getFamilyIndex() != family_index) {
             logError(LOG_VK "inconsistent queue families for surfaces");
             return false;
         }
