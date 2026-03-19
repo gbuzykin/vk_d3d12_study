@@ -1,8 +1,11 @@
 #include "dev_queue.h"
 
 #include "device.h"
+#include "object_destroyer.h"
 
 #include "common/logger.h"
+
+#include <algorithm>
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -11,8 +14,38 @@ using namespace app3d::rel::vulkan;
 // --------------------------------------------------------
 // DevQueue class implementation
 
-void DevQueue::loadQueueHandle(Device& device) {
-    if (family_index_ != INVALID_UINT32_VALUE) { vkGetDeviceQueue(~device, family_index_, 0, &queue_); }
+DevQueue::DevQueue(Device& device) : device_(device) {}
+
+DevQueue::~DevQueue() { destroy(); }
+
+bool DevQueue::create() {
+    if (family_index_ == INVALID_UINT32_VALUE) {
+        logError(LOG_VK "not selected queue family");
+        return false;
+    }
+
+    vkGetDeviceQueue(~device_, family_index_, 0, &queue_);
+
+    const VkCommandPoolCreateInfo create_info{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+        .queueFamilyIndex = family_index_,
+    };
+
+    VkResult result = vkCreateCommandPool(~device_, &create_info, nullptr, &command_pool_);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't create command pool");
+        return false;
+    }
+
+    return true;
+}
+
+void DevQueue::destroy() {
+    ObjectDestroyer<VkCommandPool>::destroy(~device_, command_pool_);
+    command_pool_ = VK_NULL_HANDLE;
+    command_buffers_.clear();
+    used_command_buffers_count_ = 0;
 }
 
 bool DevQueue::submitCommandBuffers(util::multispan<const VkSemaphore, const VkPipelineStageFlags> wait_semaphore_infos,
@@ -54,4 +87,32 @@ RenderTargetResult DevQueue::presentImages(std::span<const VkSemaphore> renderin
     if (result == VK_SUBOPTIMAL_KHR) { return RenderTargetResult::SUBOPTIMAL; }
     if (result == VK_ERROR_OUT_OF_DATE_KHR) { return RenderTargetResult::OUT_OF_DATE; }
     return RenderTargetResult::FAILED;
+}
+
+VkCommandBuffer DevQueue::obtainCommandBuffer() {
+    if (used_command_buffers_count_ == command_buffers_.size()) {
+        command_buffers_.resize(command_buffers_.size() + 5, VK_NULL_HANDLE);
+
+        const VkCommandBufferAllocateInfo allocate_info{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .commandPool = command_pool_,
+            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandBufferCount = std::uint32_t(command_buffers_.size() - used_command_buffers_count_),
+        };
+
+        VkResult result = vkAllocateCommandBuffers(~device_, &allocate_info,
+                                                   command_buffers_.data() + used_command_buffers_count_);
+        if (result != VK_SUCCESS) {
+            logError(LOG_VK "couldn't allocate command buffers");
+            return VK_NULL_HANDLE;
+        }
+    }
+    return command_buffers_[used_command_buffers_count_++];
+}
+
+void DevQueue::releaseCommandBuffer(VkCommandBuffer command_buffer) {
+    auto found_it = std::ranges::find(command_buffers_, command_buffer);
+    if (found_it == command_buffers_.end()) { return; }
+    for (auto it = found_it + 1; it != command_buffers_.end(); ++it) { *(it - 1) = *it; }
+    --used_command_buffers_count_;
 }

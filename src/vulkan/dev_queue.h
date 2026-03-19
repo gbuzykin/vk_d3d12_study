@@ -11,15 +11,18 @@ class Device;
 
 class DevQueue {
  public:
-    DevQueue() = default;
-    explicit DevQueue(std::uint32_t family_index) : family_index_(family_index) {}
+    explicit DevQueue(Device& device);
+    ~DevQueue();
     DevQueue(const DevQueue&) = delete;
     DevQueue& operator=(const DevQueue&) = delete;
 
     std::uint32_t getFamilyIndex() const { return family_index_; }
     void setFamilyIndex(std::uint32_t family_index) { family_index_ = family_index; }
 
-    void loadQueueHandle(Device& device);
+    bool create();
+    void destroy();
+    VkCommandBuffer obtainCommandBuffer();
+    void releaseCommandBuffer(VkCommandBuffer command_buffer);
 
     bool submitCommandBuffers(util::multispan<const VkSemaphore, const VkPipelineStageFlags> wait_semaphore_infos,
                               std::span<const VkCommandBuffer> command_buffers,
@@ -31,8 +34,12 @@ class DevQueue {
     VkQueue operator~() { return queue_; }
 
  private:
+    Device& device_;
     std::uint32_t family_index_ = INVALID_UINT32_VALUE;
     VkQueue queue_{VK_NULL_HANDLE};
+    VkCommandPool command_pool_{VK_NULL_HANDLE};
+    std::vector<VkCommandBuffer> command_buffers_;
+    std::size_t used_command_buffers_count_ = 0;
 };
 
 }  // namespace app3d::rel::vulkan
