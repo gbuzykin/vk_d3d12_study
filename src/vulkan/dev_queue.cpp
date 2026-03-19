@@ -1,7 +1,6 @@
 #include "dev_queue.h"
 
 #include "device.h"
-#include "rendering_driver.h"
 
 #include "common/logger.h"
 
