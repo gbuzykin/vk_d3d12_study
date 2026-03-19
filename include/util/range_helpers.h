@@ -2,8 +2,12 @@
 
 #include <cassert>
 #include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <ranges>
 #include <span>
 #include <tuple>
+#include <type_traits>
 
 namespace app3d::util {
 
@@ -34,5 +38,15 @@ class multispan {
     std::size_t size_ = 0;
     std::tuple<Ts*...> ptrs_{};
 };
+
+template<typename Range>
+    requires(std::ranges::contiguous_range<Range>)
+inline auto as_byte_span(Range&& r) {
+    using Ty = std::remove_reference_t<decltype(*std::data(r))>;
+    static_assert(std::is_trivial_v<Ty>);
+    return std::span(
+        reinterpret_cast<std::conditional_t<std::is_const_v<Ty>, const std::uint8_t*, std::uint8_t*>>(std::data(r)),
+        std::size(r) * sizeof(Ty));
+}
 
 }  // namespace app3d::util

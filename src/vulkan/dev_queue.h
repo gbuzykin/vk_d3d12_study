@@ -13,8 +13,11 @@ class DevQueue {
  public:
     DevQueue() = default;
     explicit DevQueue(std::uint32_t family_index) : family_index_(family_index) {}
+    DevQueue(const DevQueue&) = delete;
+    DevQueue& operator=(const DevQueue&) = delete;
 
     std::uint32_t getFamilyIndex() const { return family_index_; }
+    void setFamilyIndex(std::uint32_t family_index) { family_index_ = family_index; }
 
     void loadQueueHandle(Device& device);
 

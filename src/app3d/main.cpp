@@ -2,13 +2,16 @@
 
 #include "common/dynamic_library.h"
 #include "common/logger.h"
+#include "util/range_helpers.h"
+
+#include <uxs/io/filebuf.h>
 
 #include <chrono>
 #include <exception>
 
 using namespace app3d;
 
-class App3DMainWindow : public MainWindow {
+class App3DMainWindow final : public MainWindow {
  public:
     int init(int argc, char** argv);
 
@@ -27,11 +30,7 @@ class App3DMainWindow : public MainWindow {
             }
         }
 
-        const auto result = device_->renderTestScene(*swap_chain_);
-        if (result == rel::RenderTargetResult::SUBOPTIMAL || result == rel::RenderTargetResult::OUT_OF_DATE) {
-            scheduleRecreateSwapChain();
-            if (result == rel::RenderTargetResult::OUT_OF_DATE) { return true; }
-        } else if (result != rel::RenderTargetResult::SUCCESS) {
+        if (!renderScene()) {
             ret_code = -1;
             return false;
         }
@@ -66,10 +65,17 @@ class App3DMainWindow : public MainWindow {
     uxs::db::value swap_chain_opts_;
     rel::ISwapChain* swap_chain_ = nullptr;
 
+    rel::IRenderTarget* render_target_ = nullptr;
+    rel::IPipeline* pipeline_ = nullptr;
+    rel::IBuffer* vertex_buffer_ = nullptr;
+
     void scheduleRecreateSwapChain() {
         recreate_swap_chain_timer_start_ = std::chrono::high_resolution_clock::now();
         recreate_swap_chain_scheduled_ = true;
     }
+
+    bool initScene();
+    bool renderScene();
 };
 
 int App3DMainWindow::init(int argc, char** argv) {
@@ -85,13 +91,11 @@ int App3DMainWindow::init(int argc, char** argv) {
         {"version", {1, 0, 0}},
     };
 
-    driver_ = entry()->create_func();
-    if (!driver_ || !driver_->init(app_info)) { return -1; }
+    if (!(driver_ = entry()->create_func()) || !driver_->init(app_info)) { return -1; }
 
     if (!createWindow(app_info.value<std::string>("name"), 1280, 1024)) { return -1; }
 
-    surface_ = driver_->createSurface(getWindowDescriptor());
-    if (!surface_) { return -1; }
+    if (!(surface_ = driver_->createSurface(getWindowDescriptor()))) { return -1; }
 
     std::uint32_t device_index = 0;
     std::uint32_t device_count = driver_->getPhysicalDeviceCount();
@@ -105,17 +109,76 @@ int App3DMainWindow::init(int argc, char** argv) {
         return -1;
     }
 
-    device_ = driver_->createDevice(device_index, device_caps_);
-    if (!device_) { return -1; }
+    if (!(device_ = driver_->createDevice(device_index, device_caps_))) { return -1; }
 
-    swap_chain_ = surface_->createSwapChain(*device_, swap_chain_opts_);
-    if (!swap_chain_) { return -1; }
+    if (!(swap_chain_ = surface_->createSwapChain(*device_, swap_chain_opts_))) { return -1; }
 
-    if (!device_->prepareTestScene(*surface_)) { return -1; }
+    if (!(render_target_ = swap_chain_->createRenderTarget({}))) { return -1; }
+
+    if (!initScene()) { return -1; }
 
     showWindow();
     time_fps_last_ = std::chrono::high_resolution_clock::now();
     return 0;
+}
+
+bool App3DMainWindow::initScene() {
+    std::vector<std::uint32_t> vertex_shader_spv;
+    if (uxs::bfilebuf ifile("data/shaders/simple/vert.spv", "r"); ifile) {
+        vertex_shader_spv.resize(ifile.seek(0, uxs::seekdir::end) / sizeof(std::uint32_t));
+        ifile.seek(0);
+        ifile.read(util::as_byte_span(vertex_shader_spv));
+    }
+
+    std::vector<std::uint32_t> pixel_shader_spv;
+    if (uxs::bfilebuf ifile("data/shaders/simple/pix.spv", "r"); ifile) {
+        pixel_shader_spv.resize(ifile.seek(0, uxs::seekdir::end) / sizeof(std::uint32_t));
+        ifile.seek(0);
+        ifile.read(util::as_byte_span(pixel_shader_spv));
+    }
+
+    auto* vertex_shader_module = device_->createShaderModule(vertex_shader_spv);
+    if (!vertex_shader_module) { return false; }
+
+    auto* pixel_shader_module = device_->createShaderModule(pixel_shader_spv);
+    if (!pixel_shader_module) { return false; }
+
+    if (!(pipeline_ = device_->createPipeline(*render_target_, std::array{vertex_shader_module, pixel_shader_module},
+                                              {}))) {
+        return false;
+    }
+
+    const std::vector<float> vertices{0.0f, -0.75f, 0.0f, -0.75f, 0.75f, 0.0f, 0.75f, 0.75f, 0.0f};
+
+    if (!(vertex_buffer_ = device_->createBuffer(sizeof(vertices[0]) * vertices.size()))) { return false; }
+
+    if (!vertex_buffer_->updateBuffer(util::as_byte_span(vertices), 0)) { return false; }
+
+    return true;
+}
+
+bool App3DMainWindow::renderScene() {
+    const auto result = render_target_->beginRenderTarget({0.1f, 0.2f, 0.3f, 1.0f});
+    if (result == rel::RenderTargetResult::SUBOPTIMAL || result == rel::RenderTargetResult::OUT_OF_DATE) {
+        scheduleRecreateSwapChain();
+        if (result == rel::RenderTargetResult::OUT_OF_DATE) { return true; }
+    } else if (result != rel::RenderTargetResult::SUCCESS) {
+        return false;
+    }
+
+    render_target_->bindPipeline(*pipeline_);
+
+    render_target_->setViewport(rel::Rect{.extent = swap_chain_->getImageExtent()}, 0.0f, 1.0f);
+
+    render_target_->setScissor(rel::Rect{.extent = swap_chain_->getImageExtent()});
+
+    render_target_->bindVertexBuffer(*vertex_buffer_, 0, 0);
+
+    render_target_->drawGeometry(3, 1, 0, 0);
+
+    if (!render_target_->endRenderTarget()) { return false; }
+
+    return true;
 }
 
 int main(int argc, char** argv) {
