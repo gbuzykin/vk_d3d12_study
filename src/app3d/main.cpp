@@ -161,6 +161,10 @@ int App3DMainWindow::init(int argc, char** argv) {
     std::uint32_t device_index = 0;
     std::uint32_t device_count = driver_->getPhysicalDeviceCount();
 
+    device_caps_ = {
+        {"needs_compute", true},
+    };
+
     for (device_index = 0; device_index < device_count; ++device_index) {
         if (driver_->isSuitablePhysicalDevice(device_index, device_caps_)) { break; }
     }

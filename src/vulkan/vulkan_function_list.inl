@@ -115,6 +115,7 @@ DEVICE_LEVEL_VK_FUNCTION(vkFlushMappedMemoryRanges);
 
 DEVICE_LEVEL_VK_FUNCTION(vkAllocateCommandBuffers);
 DEVICE_LEVEL_VK_FUNCTION(vkFreeCommandBuffers);
+DEVICE_LEVEL_VK_FUNCTION(vkResetCommandBuffer);
 DEVICE_LEVEL_VK_FUNCTION(vkBeginCommandBuffer);
 DEVICE_LEVEL_VK_FUNCTION(vkEndCommandBuffer);
 DEVICE_LEVEL_VK_FUNCTION(vkCmdBeginRenderPass);
