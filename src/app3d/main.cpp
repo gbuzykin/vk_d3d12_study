@@ -4,12 +4,48 @@
 #include "common/logger.h"
 #include "util/range_helpers.h"
 
+#include <uxs/db/json.h>
 #include <uxs/io/filebuf.h>
 
+#include <stb_image.h>
+
+#include <array>
 #include <chrono>
 #include <exception>
+#include <vector>
 
 using namespace app3d;
+
+namespace {
+struct Image {
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::uint32_t num_components = 0;
+    std::vector<std::uint8_t> data;
+};
+
+bool loadImageFromFile(const char* filename, Image& image, std::uint32_t num_requested_components = 0) {
+    int width = 0;
+    int height = 0;
+    int num_components = 0;
+    std::unique_ptr<unsigned char, void (*)(void*)> stbi_data(
+        stbi_load(filename, &width, &height, &num_components, num_requested_components), stbi_image_free);
+
+    if (!stbi_data || width <= 0 || height <= 0 || num_components <= 0) {
+        logError("error loading image `{}`", filename);
+        return false;
+    }
+
+    image.width = width;
+    image.height = height;
+    image.num_components = num_components;
+    const std::size_t data_size = std::size_t(width) * std::size_t(height) *
+                                  (0 < num_requested_components ? num_requested_components : num_components);
+
+    image.data.assign(stbi_data.get(), stbi_data.get() + data_size);
+    return true;
+}
+}  // namespace
 
 class App3DMainWindow final : public MainWindow {
  public:
@@ -67,6 +103,9 @@ class App3DMainWindow final : public MainWindow {
 
     rel::IRenderTarget* render_target_ = nullptr;
     rel::IPipeline* pipeline_ = nullptr;
+    rel::ITexture* texture_ = nullptr;
+    rel::ISampler* sampler_ = nullptr;
+    rel::IDescriptorSet* descriptor_set_ = nullptr;
     rel::IBuffer* vertex_buffer_ = nullptr;
 
     void scheduleRecreateSwapChain() {
@@ -78,6 +117,8 @@ class App3DMainWindow final : public MainWindow {
     bool renderScene();
 };
 
+#define JSON(...) uxs::db::json::read_from_string(#__VA_ARGS__)
+
 int App3DMainWindow::init(int argc, char** argv) {
     void* driver_library = loadDynamicLibrary(".", "app3d-rel-vulkan");
     if (!driver_library) { return -1; }
@@ -86,10 +127,7 @@ int App3DMainWindow::init(int argc, char** argv) {
                                                                           "app3dGetRenderingDriverDescriptor");
     if (!entry) { return -1; }
 
-    const uxs::db::value app_info{
-        {"name", "App3D"},
-        {"version", {1, 0, 0}},
-    };
+    const auto app_info = JSON({"name" : "App3D", "version" : [ 1, 0, 0 ]});
 
     if (!(driver_ = entry()->create_func()) || !driver_->init(app_info)) { return -1; }
 
@@ -100,9 +138,7 @@ int App3DMainWindow::init(int argc, char** argv) {
     std::uint32_t device_index = 0;
     std::uint32_t device_count = driver_->getPhysicalDeviceCount();
 
-    device_caps_ = {
-        {"needs_compute", true},
-    };
+    device_caps_ = JSON({"needs_compute" : true});
 
     for (device_index = 0; device_index < device_count; ++device_index) {
         if (driver_->isSuitablePhysicalDevice(device_index, device_caps_)) { break; }
@@ -128,14 +164,14 @@ int App3DMainWindow::init(int argc, char** argv) {
 
 bool App3DMainWindow::initScene() {
     std::vector<std::uint32_t> vertex_shader_spv;
-    if (uxs::bfilebuf ifile("data/shaders/simple/vert.spv", "r"); ifile) {
+    if (uxs::bfilebuf ifile("data/shaders/sampler/vert.spv", "r"); ifile) {
         vertex_shader_spv.resize(ifile.seek(0, uxs::seekdir::end) / sizeof(std::uint32_t));
         ifile.seek(0);
         ifile.read(util::as_byte_span(vertex_shader_spv));
     }
 
     std::vector<std::uint32_t> pixel_shader_spv;
-    if (uxs::bfilebuf ifile("data/shaders/simple/pix.spv", "r"); ifile) {
+    if (uxs::bfilebuf ifile("data/shaders/sampler/pix.spv", "r"); ifile) {
         pixel_shader_spv.resize(ifile.seek(0, uxs::seekdir::end) / sizeof(std::uint32_t));
         ifile.seek(0);
         ifile.read(util::as_byte_span(pixel_shader_spv));
@@ -147,16 +183,45 @@ bool App3DMainWindow::initScene() {
     auto* pixel_shader_module = device_->createShaderModule(pixel_shader_spv);
     if (!pixel_shader_module) { return false; }
 
+    const auto pipeline = JSON({
+        "stages" : [
+            {"stage" : "vertex", "module_index" : 0, "entry" : "main"},
+            {"stage" : "pixel", "module_index" : 1, "entry" : "main"}
+        ],
+        "vertex_layouts" : [ {
+            "binding" : 0,
+            "stride" : 20,
+            "attributes" : {"0" : {"format" : "float3", "offset" : 0}, "1" : {"format" : "float2", "offset" : 12}}
+        } ]
+    });
+
     if (!(pipeline_ = device_->createPipeline(*render_target_, std::array{vertex_shader_module, pixel_shader_module},
-                                              {}))) {
+                                              pipeline))) {
         return false;
     }
 
-    const std::vector<float> vertices{0.0f, -0.75f, 0.0f, -0.75f, 0.75f, 0.0f, 0.75f, 0.75f, 0.0f};
+    Image image;
+    if (!loadImageFromFile("data/images/sunset.jpg", image, 4)) { return false; }
 
-    if (!(vertex_buffer_ = device_->createBuffer(sizeof(vertices[0]) * vertices.size()))) { return -1; }
+    rel::Extent3u image_extent{.width = image.width, .height = image.height, .depth = 1};
 
-    if (!vertex_buffer_->updateBuffer(util::as_byte_span(vertices), 0)) { return -1; }
+    if (!(texture_ = device_->createTexture(image_extent))) { return false; }
+
+    if (!texture_->updateTexture(image.data, {}, image_extent)) { return false; }
+
+    if (!(sampler_ = device_->createSampler())) { return false; }
+
+    if (!(descriptor_set_ = device_->createDescriptorSet(*pipeline_))) { return false; }
+    descriptor_set_->updateTextureSamplerDescriptor(*texture_, *sampler_);
+
+    const std::vector<float> vertices{
+        -0.75f, -0.75f, 0.0f, 0.0f, 0.0f, -0.75f, 0.75f, 0.0f, 0.0f, 1.0f,
+        0.75f,  -0.75f, 0.0f, 1.0f, 0.0f, 0.75f,  0.75f, 0.0f, 1.0f, 1.0f,
+    };
+
+    if (!(vertex_buffer_ = device_->createBuffer(sizeof(vertices[0]) * vertices.size()))) { return false; }
+
+    if (!vertex_buffer_->updateBuffer(util::as_byte_span(vertices), 0)) { return false; }
 
     return true;
 }
@@ -176,9 +241,11 @@ bool App3DMainWindow::renderScene() {
 
     render_target_->setScissor(rel::Rect{.extent = swap_chain_->getImageExtent()});
 
+    render_target_->bindDescriptorSet(*pipeline_, *descriptor_set_, 0);
+
     render_target_->bindVertexBuffer(*vertex_buffer_, 0, 0);
 
-    render_target_->drawGeometry(3, 1, 0, 0);
+    render_target_->drawGeometry(4, 1, 0, 0);
 
     if (!render_target_->endRenderTarget()) { return false; }
 

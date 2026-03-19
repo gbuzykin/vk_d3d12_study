@@ -4,7 +4,6 @@
 
 #include "interfaces/i_rendering_driver.h"
 
-#include <chrono>
 #include <vector>
 
 namespace app3d::rel::vulkan {
@@ -20,9 +19,6 @@ class SwapChain final : public ISwapChain {
     SwapChain(const SwapChain&) = delete;
     SwapChain& operator=(const SwapChain&) = delete;
 
-    std::uint32_t getImageCount() const { return std::uint32_t(images_.size()); }
-    VkImage getImage(std::uint32_t image_index) const { return images_[image_index]; }
-
     static std::uint32_t chooseImageCount(const VkSurfaceCapabilitiesKHR& capabilities, const uxs::db::value& opts);
     static VkExtent2D chooseImageExtent(const VkSurfaceCapabilitiesKHR& capabilities, const uxs::db::value& opts);
     static bool chooseImageUsage(const VkSurfaceCapabilitiesKHR& capabilities, VkImageUsageFlags& usage);
@@ -35,6 +31,8 @@ class SwapChain final : public ISwapChain {
 
     VkSwapchainKHR operator~() { return swap_chain_; }
     Surface& getSurface() { return surface_; }
+    VkImage getImage(std::uint32_t image_index) { return images_[image_index]; }
+    std::uint32_t getImageCount() const { return std::uint32_t(images_.size()); }
 
     //@{ ISwapChain
     Extent2u getImageExtent() const override {

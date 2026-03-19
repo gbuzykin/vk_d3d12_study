@@ -10,7 +10,6 @@
 #    include <windows.h>  // NOLINT
 #elif defined(__linux__)
 #    include <dlfcn.h>
-#    include <unistd.h>
 #endif
 
 using namespace app3d;

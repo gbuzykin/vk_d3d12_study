@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vulkan_api.h"  // NOLINT
+#include "vulkan_api.h"
 
 #include "interfaces/i_rendering_driver.h"
 

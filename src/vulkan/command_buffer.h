@@ -29,10 +29,15 @@ class CommandBuffer {
                              std::uint32_t(buffer_memory_barriers.size()), buffer_memory_barriers.data(), 0, nullptr);
     }
 
-    void copyDataBetweenBuffers(VkBuffer source_buffer, VkBuffer destination_buffer,
-                                std::span<const VkBufferCopy> regions) {
+    void copyBuffer(VkBuffer source_buffer, VkBuffer destination_buffer, std::span<const VkBufferCopy> regions) {
         vkCmdCopyBuffer(command_buffer_, source_buffer, destination_buffer, std::uint32_t(regions.size()),
                         regions.data());
+    }
+
+    void copyBufferToImage(VkBuffer source_buffer, VkImage destination_image, VkImageLayout image_layout,
+                           std::span<const VkBufferImageCopy> regions) {
+        vkCmdCopyBufferToImage(command_buffer_, source_buffer, destination_image, image_layout,
+                               std::uint32_t(regions.size()), regions.data());
     }
 
     void bindPipelineObject(VkPipelineBindPoint pipeline_type, VkPipeline pipeline) {
@@ -50,6 +55,14 @@ class CommandBuffer {
     void bindVertexBuffers(std::uint32_t first_binding, util::multispan<const VkBuffer, const VkDeviceSize> buffers) {
         vkCmdBindVertexBuffers(command_buffer_, first_binding, std::uint32_t(buffers.size()), buffers.data<0>(),
                                buffers.data<1>());
+    }
+
+    void bindDescriptorSets(VkPipelineBindPoint pipeline_type, VkPipelineLayout pipeline_layout,
+                            std::uint32_t first_set_index, std::span<const VkDescriptorSet> descriptor_sets,
+                            std::span<const std::uint32_t> dynamic_offsets) {
+        vkCmdBindDescriptorSets(command_buffer_, pipeline_type, pipeline_layout, first_set_index,
+                                std::uint32_t(descriptor_sets.size()), descriptor_sets.data(),
+                                std::uint32_t(dynamic_offsets.size()), dynamic_offsets.data());
     }
 
     void drawGeometry(std::uint32_t vertex_count, std::uint32_t instance_count, std::uint32_t first_vertex,
