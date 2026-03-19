@@ -288,6 +288,7 @@ bool PhysicalDevice::loadExtensionProperties() {
 bool PhysicalDevice::loadFeaturesAndProperties() {
     vkGetPhysicalDeviceProperties(physical_device_, &properties_);
     vkGetPhysicalDeviceFeatures(physical_device_, &features_);
+    vkGetPhysicalDeviceMemoryProperties(physical_device_, &memory_properties_);
 
     std::uint32_t queue_family_count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &queue_family_count, nullptr);

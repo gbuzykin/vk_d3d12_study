@@ -33,22 +33,29 @@ enum class PlatformType {
     PLATFORM_WAYLAND,
 };
 
+enum class RenderTargetResult {
+    SUCCESS = 0,
+    SUBOPTIMAL,
+    OUT_OF_DATE,
+    FAILED,
+};
+
 struct ISurface;
 struct ISwapChain;
 
 struct IDevice {
     virtual ~IDevice() = default;
     virtual bool prepareTestScene(ISurface& surface) = 0;
-    virtual bool renderTestScene(ISwapChain& swap_chain) = 0;
+    virtual RenderTargetResult renderTestScene(ISwapChain& swap_chain) = 0;
+};
+
+struct ISwapChain {
+    virtual ~ISwapChain() = default;
 };
 
 struct ISurface {
     virtual ~ISurface() = default;
     virtual ISwapChain* createSwapChain(IDevice& device, const uxs::db::value& opts) = 0;
-};
-
-struct ISwapChain {
-    virtual ~ISwapChain() = default;
 };
 
 struct WindowDescriptor {

@@ -60,7 +60,7 @@ block()
 set(UXS_USE_ZLIB OFF)
 set(UXS_USE_LIBZIP OFF)
 set(UXS_DO_INSTALL_SDK OFF)
-FetchContent_Declare(uxs SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/uxs)
+FetchContent_Declare(uxs SOURCE_DIR ${CMAKE_SOURCE_DIR}/3rdparty/uxs)
 FetchContent_MakeAvailable(uxs)
 endblock()
 
@@ -73,7 +73,7 @@ elseif(UNIX)
   set(APP3D_USE_PLATFORM XCB)
 endif()
 
-set(APP3D_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
+set(APP3D_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
 include_directories(${APP3D_INCLUDE_DIR})
 include_directories(${PROJECT_BINARY_DIR}/generated)
 
@@ -101,6 +101,11 @@ endif()
 install(TARGETS app3d RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
                               COMPONENT binaries)
 install_win32_pdb(app3d)
+
+install(
+  DIRECTORY ${CMAKE_SOURCE_DIR}/data
+  DESTINATION ${CMAKE_INSTALL_BINDIR}
+  COMPONENT binaries)
 
 # ##############################################################################
 # Auxiliary
