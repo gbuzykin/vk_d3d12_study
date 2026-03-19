@@ -33,8 +33,22 @@ enum class PlatformType {
     PLATFORM_WAYLAND,
 };
 
+struct ISurface;
+struct ISwapChain;
+
 struct IDevice {
     virtual ~IDevice() = default;
+    virtual bool prepareTestScene(ISurface& surface) = 0;
+    virtual bool renderTestScene(ISwapChain& swap_chain) = 0;
+};
+
+struct ISurface {
+    virtual ~ISurface() = default;
+    virtual ISwapChain* createSwapChain(IDevice& device, const uxs::db::value& opts) = 0;
+};
+
+struct ISwapChain {
+    virtual ~ISwapChain() = default;
 };
 
 struct WindowDescriptor {
@@ -50,6 +64,7 @@ struct IRenderingDriver {
     virtual std::uint32_t getPhysicalDeviceCount() const = 0;
     virtual const char* getPhysicalDeviceName(std::uint32_t device_index) const = 0;
     virtual bool isSuitablePhysicalDevice(std::uint32_t device_index, const uxs::db::value& caps) const = 0;
+    virtual ISurface* createSurface(const WindowDescriptor& win_desc) = 0;
     virtual IDevice* createDevice(std::uint32_t device_index, const uxs::db::value& caps) = 0;
 };
 
