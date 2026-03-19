@@ -1,5 +1,9 @@
 #pragma once
 
+#include <uxs/db/value.h>
+
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <string_view>
 
@@ -19,8 +23,19 @@
 
 namespace app3d::rel {
 
+constexpr std::uint32_t INVALID_UINT32_VALUE = std::numeric_limits<std::uint32_t>::max();
+
+struct IDevice {
+    virtual ~IDevice() = default;
+};
+
 struct IRenderingDriver {
     virtual ~IRenderingDriver() = default;
+    virtual bool init(const uxs::db::value& app_info) = 0;
+    virtual std::uint32_t getPhysicalDeviceCount() const = 0;
+    virtual const char* getPhysicalDeviceName(std::uint32_t device_index) const = 0;
+    virtual bool isSuitablePhysicalDevice(std::uint32_t device_index, const uxs::db::value& caps) const = 0;
+    virtual IDevice* createDevice(std::uint32_t device_index, const uxs::db::value& caps) = 0;
 };
 
 // Registered rendering driver descriptor

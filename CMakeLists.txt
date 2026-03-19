@@ -77,9 +77,8 @@ set(APP3D_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 include_directories(${APP3D_INCLUDE_DIR})
 include_directories(${PROJECT_BINARY_DIR}/generated)
 
-add_compile_definitions(APP3D_USE_PLATFORM_${APP3D_USE_PLATFORM})
-
 add_subdirectory(src/common)
+add_subdirectory(src/vulkan)
 
 file(GLOB_RECURSE APP3D_SRC_FILES src/app3d/*.h;src/app3d/*.cpp)
 
