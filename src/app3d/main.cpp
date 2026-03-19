@@ -3,6 +3,7 @@
 #include "common/dynamic_library.h"
 #include "common/logger.h"
 
+#include <chrono>
 #include <exception>
 
 using namespace app3d;
@@ -12,20 +13,50 @@ class App3DMainWindow : public MainWindow {
     int init(int argc, char** argv);
 
     bool onIdle(int& ret_code) override {
-        const bool result = device_->renderTestScene(*swap_chain_);
-        if (result) { return true; }
-        ret_code = -1;
-        return false;
+        const auto time_now = std::chrono::high_resolution_clock::now();
+
+        if (recreate_swap_chain_scheduled_) {
+            if (std::chrono::duration<double>(time_now - recreate_swap_chain_timer_start_).count() >= 0.25) {
+                if (!surface_->createSwapChain(*device_, swap_chain_opts_)) {
+                    ret_code = -1;
+                    return false;
+                }
+                recreate_swap_chain_scheduled_ = false;
+            } else {
+                return true;
+            }
+        }
+
+        const auto result = device_->renderTestScene(*swap_chain_);
+        if (result == rel::RenderTargetResult::SUBOPTIMAL || result == rel::RenderTargetResult::OUT_OF_DATE) {
+            scheduleRecreateSwapChain();
+            if (result == rel::RenderTargetResult::OUT_OF_DATE) { return true; }
+        } else if (result != rel::RenderTargetResult::SUCCESS) {
+            ret_code = -1;
+            return false;
+        }
+
+        ++frame_counter_;
+        const double delta = std::chrono::duration<double>(time_now - time_fps_last_).count();
+        if (delta >= 2) {
+            logInfo("fps = {:.1f}", frame_counter_ / delta);
+            frame_counter_ = 0;
+            time_fps_last_ = time_now;
+        }
+        return true;
     }
 
     bool onResize(int& ret_code) override {
-        swap_chain_ = surface_->createSwapChain(*device_, swap_chain_opts_);
-        if (swap_chain_) { return true; }
-        ret_code = -1;
-        return false;
+        scheduleRecreateSwapChain();
+        return true;
     }
 
  private:
+    std::uint64_t frame_counter_ = 0;
+    std::chrono::high_resolution_clock::time_point time_fps_last_{};
+    std::chrono::high_resolution_clock::time_point recreate_swap_chain_timer_start_{};
+    bool recreate_swap_chain_scheduled_ = false;
+
     std::unique_ptr<rel::IRenderingDriver> driver_;
     rel::ISurface* surface_ = nullptr;
 
@@ -34,6 +65,11 @@ class App3DMainWindow : public MainWindow {
 
     uxs::db::value swap_chain_opts_;
     rel::ISwapChain* swap_chain_ = nullptr;
+
+    void scheduleRecreateSwapChain() {
+        recreate_swap_chain_timer_start_ = std::chrono::high_resolution_clock::now();
+        recreate_swap_chain_scheduled_ = true;
+    }
 };
 
 int App3DMainWindow::init(int argc, char** argv) {
@@ -78,6 +114,7 @@ int App3DMainWindow::init(int argc, char** argv) {
     if (!device_->prepareTestScene(*surface_)) { return -1; }
 
     showWindow();
+    time_fps_last_ = std::chrono::high_resolution_clock::now();
     return 0;
 }
 
