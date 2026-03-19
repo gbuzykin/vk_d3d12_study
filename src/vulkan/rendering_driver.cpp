@@ -73,7 +73,7 @@ bool RenderingDriver::init(const uxs::db::value& app_info) {
 std::uint32_t RenderingDriver::getPhysicalDeviceCount() const { return std::uint32_t(physical_devices_.size()); }
 
 const char* RenderingDriver::getPhysicalDeviceName(std::uint32_t device_index) const {
-    return physical_devices_[device_index]->getName();
+    return physical_devices_[device_index]->getProperties().deviceName;
 }
 
 bool RenderingDriver::isSuitablePhysicalDevice(std::uint32_t device_index, const uxs::db::value& caps) const {
@@ -290,6 +290,7 @@ bool PhysicalDevice::loadExtensionProperties() {
 bool PhysicalDevice::loadFeaturesAndProperties() {
     vkGetPhysicalDeviceProperties(physical_device_, &properties_);
     vkGetPhysicalDeviceFeatures(physical_device_, &features_);
+    vkGetPhysicalDeviceMemoryProperties(physical_device_, &memory_properties_);
 
     std::uint32_t queue_family_count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &queue_family_count, nullptr);
