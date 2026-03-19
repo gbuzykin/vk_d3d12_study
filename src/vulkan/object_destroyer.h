@@ -7,45 +7,49 @@ namespace app3d::rel::vulkan {
 template<typename Ty>
 class ObjectDestroyer;
 
-#define IMPLEMENT_VK_DESTROYER(type) \
+#define IMPLEMENT_VK_DESTROYER(type, destroy_func) \
     template<> \
-    class ObjectDestroyer<Vk##type> { \
+    class ObjectDestroyer<type> { \
      public: \
-        static void destroy(Vk##type obj) { \
-            if (obj != VK_NULL_HANDLE) { vkDestroy##type(obj, nullptr); } \
+        static void destroy(type obj) { \
+            if (obj != VK_NULL_HANDLE) { destroy_func(obj, nullptr); } \
         } \
     }
 
-IMPLEMENT_VK_DESTROYER(Instance);
-IMPLEMENT_VK_DESTROYER(Device);
+IMPLEMENT_VK_DESTROYER(VkInstance, vkDestroyInstance);
+IMPLEMENT_VK_DESTROYER(VkDevice, vkDestroyDevice);
 
 #undef IMPLEMENT_VK_DESTROYER
 
-#define IMPLEMENT_VK_DESTROYER_WITH_PARENT(parent_type, type) \
+#define IMPLEMENT_VK_DESTROYER_WITH_PARENT(parent_type, type, destroy_func) \
     template<> \
-    class ObjectDestroyer<Vk##type> { \
+    class ObjectDestroyer<type> { \
      public: \
-        explicit ObjectDestroyer(Vk##parent_type parent, Vk##type obj = VK_NULL_HANDLE) \
-            : parent_(parent), obj_(obj) {} \
+        explicit ObjectDestroyer(parent_type parent, type obj = VK_NULL_HANDLE) : parent_(parent), obj_(obj) {} \
         ~ObjectDestroyer() { destroy(parent_, obj_); } \
-        static void destroy(Vk##parent_type parent, Vk##type obj) { \
-            if (obj != VK_NULL_HANDLE) { vkDestroy##type(parent, obj, nullptr); } \
+        static void destroy(parent_type parent, type obj) { \
+            if (obj != VK_NULL_HANDLE) { destroy_func(parent, obj, nullptr); } \
         } \
-        Vk##type& operator~() { return obj_; } \
+        type& operator~() { return obj_; } \
 \
      private: \
-        Vk##parent_type parent_; \
-        Vk##type obj_; \
+        parent_type parent_; \
+        type obj_; \
     }
 
-IMPLEMENT_VK_DESTROYER_WITH_PARENT(Instance, SurfaceKHR);
-IMPLEMENT_VK_DESTROYER_WITH_PARENT(Device, SwapchainKHR);
-IMPLEMENT_VK_DESTROYER_WITH_PARENT(Device, ImageView);
-IMPLEMENT_VK_DESTROYER_WITH_PARENT(Device, Semaphore);
-IMPLEMENT_VK_DESTROYER_WITH_PARENT(Device, Fence);
-IMPLEMENT_VK_DESTROYER_WITH_PARENT(Device, CommandPool);
-IMPLEMENT_VK_DESTROYER_WITH_PARENT(Device, RenderPass);
-IMPLEMENT_VK_DESTROYER_WITH_PARENT(Device, Framebuffer);
+IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkInstance, VkSurfaceKHR, vkDestroySurfaceKHR);
+IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkSwapchainKHR, vkDestroySwapchainKHR);
+IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkImageView, vkDestroyImageView);
+IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkSemaphore, vkDestroySemaphore);
+IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkFence, vkDestroyFence);
+IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkCommandPool, vkDestroyCommandPool);
+IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkRenderPass, vkDestroyRenderPass);
+IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkFramebuffer, vkDestroyFramebuffer);
+IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkShaderModule, vkDestroyShaderModule);
+IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkPipelineLayout, vkDestroyPipelineLayout);
+IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkPipeline, vkDestroyPipeline);
+IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkBuffer, vkDestroyBuffer);
+IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkDeviceMemory, vkFreeMemory);
 
 #undef IMPLEMENT_VK_DESTROYER_WITH_PARENT
 

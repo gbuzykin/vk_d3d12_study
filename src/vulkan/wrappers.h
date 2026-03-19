@@ -44,6 +44,27 @@ struct Wrapper<VkImageMemoryBarrier> {
 };
 
 template<>
+struct Wrapper<VkBufferMemoryBarrier> {
+    VkBuffer buffer;
+    VkAccessFlags current_access;
+    VkAccessFlags new_access;
+    std::uint32_t current_queue_family;
+    std::uint32_t new_queue_family;
+    static VkBufferMemoryBarrier unwrap(Wrapper wrapper) {
+        return {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .srcAccessMask = wrapper.current_access,
+            .dstAccessMask = wrapper.new_access,
+            .srcQueueFamilyIndex = wrapper.current_queue_family,
+            .dstQueueFamilyIndex = wrapper.new_queue_family,
+            .buffer = wrapper.buffer,
+            .offset = 0,
+            .size = VK_WHOLE_SIZE,
+        };
+    }
+};
+
+template<>
 struct Wrapper<VkSubpassDescription> {
     VkPipelineBindPoint pipeline_type;
     std::span<const VkAttachmentReference> input_attachments;

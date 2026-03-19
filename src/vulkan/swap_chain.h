@@ -17,8 +17,10 @@ class SwapChain : public ISwapChain {
     ~SwapChain() override;
 
     std::uint32_t getImageCount() const { return image_count_; }
+    std::uint32_t getImageWidth() const { return image_size_.width; }
+    std::uint32_t getImageHeight() const { return image_size_.height; }
     VkExtent2D getImageSize() const { return image_size_; }
-    VkRect2D getImageRect() const { return {{0, 0}, image_size_}; }
+    VkRect2D getImageRect() const { return {.offset = {0, 0}, .extent = image_size_}; }
     VkImage getImage(std::uint32_t image_index) const { return images_[image_index]; }
     VkImageView getImageView(std::uint32_t image_index) const { return image_views_[image_index]; }
 
@@ -29,7 +31,8 @@ class SwapChain : public ISwapChain {
     static VkSurfaceFormatKHR chooseImageFormat(std::span<const VkSurfaceFormatKHR> formats);
 
     bool create(const uxs::db::value& opts);
-    bool acquireImage(std::uint64_t timeout, VkSemaphore semaphore, VkFence fence, std::uint32_t& image_index);
+    RenderTargetResult acquireImage(std::uint64_t timeout, VkSemaphore semaphore, VkFence fence,
+                                    std::uint32_t& image_index);
 
     VkSwapchainKHR operator~() { return swap_chain_; }
 
