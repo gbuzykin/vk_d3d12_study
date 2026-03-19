@@ -18,6 +18,7 @@ class SwapChain : public ISwapChain {
 
     std::uint32_t getImageCount() const { return image_count_; }
     VkExtent2D getImageSize() const { return image_size_; }
+    VkRect2D getImageRect() const { return {{0, 0}, image_size_}; }
     VkImage getImage(std::uint32_t image_index) const { return images_[image_index]; }
     VkImageView getImageView(std::uint32_t image_index) const { return image_views_[image_index]; }
 
