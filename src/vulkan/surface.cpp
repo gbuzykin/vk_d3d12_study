@@ -7,8 +7,6 @@
 
 #include "common/logger.h"
 
-#include <algorithm>
-
 using namespace app3d;
 using namespace app3d::rel;
 using namespace app3d::rel::vulkan;

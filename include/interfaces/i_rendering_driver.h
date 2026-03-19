@@ -4,8 +4,10 @@
 
 #include <uxs/db/value.h>
 
+#include <cstddef>
 #include <limits>
 #include <memory>
+#include <span>
 #include <string_view>
 
 #if defined(WIN32)
@@ -33,6 +35,56 @@ enum class RenderTargetResult {
     FAILED,
 };
 
+struct Vec2i {
+    std::int32_t x, y;
+};
+
+struct Vec3i {
+    std::int32_t x, y, z;
+};
+
+struct Color4f {
+    float r, g, b, a;
+};
+
+struct Extent2u {
+    std::uint32_t width, height;
+};
+
+struct Extent3u {
+    std::uint32_t width, height, depth;
+};
+
+struct Rect {
+    Vec2i offset;
+    Extent2u extent;
+};
+
+struct IShaderModule {
+    virtual ~IShaderModule() = default;
+};
+
+struct IPipeline {
+    virtual ~IPipeline() = default;
+};
+
+struct IBuffer {
+    virtual ~IBuffer() = default;
+    virtual bool updateBuffer(std::span<const std::uint8_t> data, std::uint64_t offset) = 0;
+};
+
+struct IRenderTarget {
+    virtual ~IRenderTarget() = default;
+    virtual RenderTargetResult beginRenderTarget(const Color4f& clear_color) = 0;
+    virtual bool endRenderTarget() = 0;
+    virtual void setViewport(const Rect& rect, float z_near, float z_far) = 0;
+    virtual void setScissor(const Rect& rect) = 0;
+    virtual void bindPipeline(IPipeline& pipeline) = 0;
+    virtual void bindVertexBuffer(IBuffer& buffer, std::uint32_t offset, std::uint32_t slot) = 0;
+    virtual void drawGeometry(std::uint32_t vertex_count, std::uint32_t instance_count, std::uint32_t first_vertex,
+                              std::uint32_t first_instance) = 0;
+};
+
 struct ISurface {
     virtual ~ISurface() = default;
 };
@@ -40,13 +92,17 @@ struct ISurface {
 struct ISwapChain {
     virtual ~ISwapChain() = default;
     virtual bool recreate(const uxs::db::value& opts) = 0;
+    virtual Extent2u getImageExtent() const = 0;
+    virtual IRenderTarget* createRenderTarget(const uxs::db::value& opts) = 0;
 };
 
 struct IDevice {
     virtual ~IDevice() = default;
     virtual ISwapChain* createSwapChain(ISurface& surface, const uxs::db::value& opts) = 0;
-    virtual bool prepareTestScene(ISurface& surface) = 0;
-    virtual RenderTargetResult renderTestScene(ISwapChain& swap_chain) = 0;
+    virtual IShaderModule* createShaderModule(std::span<const std::uint32_t> source) = 0;
+    virtual IPipeline* createPipeline(IRenderTarget& render_target, std::span<IShaderModule* const> shader_modules,
+                                      const uxs::db::value& config) = 0;
+    virtual IBuffer* createBuffer(std::uint64_t size) = 0;
 };
 
 struct IRenderingDriver {
