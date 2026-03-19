@@ -1,20 +1,21 @@
 #include "device.h"
 
 #include "buffer.h"
+#include "descriptor_set.h"
 #include "object_destroyer.h"
 #include "pipeline.h"
 #include "render_target.h"
 #include "rendering_driver.h"
+#include "sampler.h"
 #include "shader_module.h"
 #include "surface.h"
 #include "swap_chain.h"
+#include "texture.h"
 #include "wrappers.h"
 
 #include "common/logger.h"
 
-#include <algorithm>
-#include <array>
-#include <cstring>
+#include <unordered_map>
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -27,7 +28,10 @@ Device::Device(RenderingDriver& instance, PhysicalDevice& physical_device)
     : instance_(instance), physical_device_(physical_device), graphics_queue_(*this), compute_queue_(*this),
       transfer_queue_(*this), present_queue_(*this) {}
 
-Device::~Device() { ObjectDestroyer<VkDevice>::destroy(device_); }
+Device::~Device() {
+    ObjectDestroyer<VkDescriptorPool>::destroy(device_, descriptor_pool_);
+    ObjectDestroyer<VkDevice>::destroy(device_);
+}
 
 bool Device::create(const uxs::db::value& caps) {
     std::vector<const char*> device_extensions;
@@ -188,11 +192,27 @@ bool Device::create(const uxs::db::value& caps) {
     if (!transfer_queue_.create()) { return false; }
     if (!present_queue_.create()) { return false; }
 
-    transfer_command_buffer_ = CommandBuffer::wrap(transfer_queue_.obtainCommandBuffer());
+    VkCommandBuffer command_buffer = VK_NULL_HANDLE;
+    if (!transfer_queue_.obtainCommandBuffer(command_buffer)) { return false; }
+    transfer_command_buffer_ = CommandBuffer::wrap(command_buffer);
+
+    if (!createDescriptorPool(8,
+                              std::array{
+                                  VkDescriptorPoolSize{
+                                      .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                                      .descriptorCount = 8,
+                                  },
+                              },
+                              descriptor_pool_)) {
+        return false;
+    }
 
     shader_modules_.reserve(16);
     pipelines_.reserve(16);
     buffers_.reserve(16);
+    textures_.reserve(16);
+    samplers_.reserve(16);
+    descriptor_sets_.reserve(16);
 
     return true;
 }
@@ -200,6 +220,9 @@ bool Device::create(const uxs::db::value& caps) {
 void Device::finalize() {
     if (device_ == VK_NULL_HANDLE) { return; }
     waitDevice();
+    descriptor_sets_.clear();
+    samplers_.clear();
+    textures_.clear();
     buffers_.clear();
     pipelines_.clear();
     shader_modules_.clear();
@@ -260,11 +283,32 @@ bool Device::resetFences(std::span<const VkFence> fences) {
     return true;
 }
 
-bool Device::writeToDeviceLocalMemory(VkDeviceSize data_size, const void* data, VkBuffer dst, VkDeviceSize dst_offset,
-                                      VkAccessFlags dst_current_access, VkAccessFlags dst_new_access,
-                                      VkPipelineStageFlags dst_generating_stages,
-                                      VkPipelineStageFlags dst_consuming_stages,
-                                      std::span<const VkSemaphore> signal_semaphores) {
+bool Device::obtainDescriptorSet(VkDescriptorSetLayout descriptor_set_layout, VkDescriptorSet& descriptor_set) {
+    const VkDescriptorSetAllocateInfo allocate_info{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = descriptor_pool_,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &descriptor_set_layout,
+    };
+
+    VkResult result = vkAllocateDescriptorSets(device_, &allocate_info, &descriptor_set);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't allocate descriptor sets");
+        return false;
+    }
+
+    return true;
+}
+
+void Device::releaseDescriptorSet(VkDescriptorSet descriptor_set) {
+    vkFreeDescriptorSets(device_, descriptor_pool_, 1, &descriptor_set);
+}
+
+bool Device::writeBufferInDeviceLocalMemory(VkDeviceSize data_size, const void* data, VkBuffer dst,
+                                            VkDeviceSize dst_offset, VkAccessFlags dst_current_access,
+                                            VkAccessFlags dst_new_access, VkPipelineStageFlags dst_generating_stages,
+                                            VkPipelineStageFlags dst_consuming_stages,
+                                            std::span<const VkSemaphore> signal_semaphores) {
     const auto non_coherent_atom_size = getPhysicalDevice().getProperties().limits.nonCoherentAtomSize;
 
     Buffer staging_buffer(*this);
@@ -290,11 +334,10 @@ bool Device::writeToDeviceLocalMemory(VkDeviceSize data_size, const void* data, 
                                                         }),
                                                     });
 
-    transfer_command_buffer_.copyDataBetweenBuffers(
-        ~staging_buffer, dst,
-        std::array{
-            VkBufferCopy{.srcOffset = 0, .dstOffset = dst_offset, .size = data_size},
-        });
+    transfer_command_buffer_.copyBuffer(~staging_buffer, dst,
+                                        std::array{
+                                            VkBufferCopy{.dstOffset = dst_offset, .size = data_size},
+                                        });
 
     transfer_command_buffer_.setBufferMemoryBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, dst_consuming_stages,
                                                     std::array{
@@ -306,6 +349,76 @@ bool Device::writeToDeviceLocalMemory(VkDeviceSize data_size, const void* data, 
                                                             .new_queue_family = VK_QUEUE_FAMILY_IGNORED,
                                                         }),
                                                     });
+
+    if (!transfer_command_buffer_.endCommandBuffer()) { return false; }
+
+    ObjectDestroyer<VkFence> fence(device_);
+    if (!createFence(false, ~fence)) { return false; }
+
+    if (!transfer_queue_.submitCommandBuffers({}, std::array{~transfer_command_buffer_}, signal_semaphores, ~fence)) {
+        return false;
+    }
+
+    if (!waitForFences(std::array{~fence}, VK_FALSE, FINISH_TRANSFER_TIMEOUT)) { return false; }
+
+    return true;
+}
+
+bool Device::writeImageInDeviceLocalMemory(VkDeviceSize data_size, const void* data, VkImage dst,
+                                           VkImageSubresourceLayers dst_subresource, VkOffset3D dst_offset,
+                                           VkExtent3D dst_extent, VkImageLayout dst_current_layout,
+                                           VkImageLayout dst_new_layout, VkAccessFlags dst_current_access,
+                                           VkAccessFlags dst_new_access, VkImageAspectFlags dst_aspect,
+                                           VkPipelineStageFlags dst_generating_stages,
+                                           VkPipelineStageFlags dst_consuming_stages,
+                                           std::span<const VkSemaphore> signal_semaphores) {
+    Buffer staging_buffer(*this);
+    if (!staging_buffer.create(data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) {
+        return false;
+    }
+
+    if (!writeToHostVisibleMemory(staging_buffer.getMemoryObject(), 0, data_size, data)) { return false; }
+
+    if (!transfer_command_buffer_.beginCommandBuffer(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) {
+        return false;
+    }
+
+    transfer_command_buffer_.setImageMemoryBarrier(dst_generating_stages, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                                   std::array{
+                                                       Wrapper<VkImageMemoryBarrier>::unwrap({
+                                                           .image = dst,
+                                                           .current_access = dst_current_access,
+                                                           .new_access = VK_ACCESS_TRANSFER_WRITE_BIT,
+                                                           .current_layout = dst_current_layout,
+                                                           .new_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                                           .current_queue_family = VK_QUEUE_FAMILY_IGNORED,
+                                                           .new_queue_family = VK_QUEUE_FAMILY_IGNORED,
+                                                           .aspect = dst_aspect,
+                                                       }),
+                                                   });
+
+    transfer_command_buffer_.copyBufferToImage(~staging_buffer, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                               std::array{
+                                                   VkBufferImageCopy{
+                                                       .imageSubresource = dst_subresource,
+                                                       .imageOffset = dst_offset,
+                                                       .imageExtent = dst_extent,
+                                                   },
+                                               });
+
+    transfer_command_buffer_.setImageMemoryBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, dst_consuming_stages,
+                                                   std::array{
+                                                       Wrapper<VkImageMemoryBarrier>::unwrap({
+                                                           .image = dst,
+                                                           .current_access = VK_ACCESS_TRANSFER_WRITE_BIT,
+                                                           .new_access = dst_new_access,
+                                                           .current_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                                           .new_layout = dst_new_layout,
+                                                           .current_queue_family = VK_QUEUE_FAMILY_IGNORED,
+                                                           .new_queue_family = VK_QUEUE_FAMILY_IGNORED,
+                                                           .aspect = dst_aspect,
+                                                       }),
+                                                   });
 
     if (!transfer_command_buffer_.endCommandBuffer()) { return false; }
 
@@ -338,14 +451,60 @@ IPipeline* Device::createPipeline(IRenderTarget& render_target, std::span<IShade
 
 IBuffer* Device::createBuffer(std::size_t size) {
     auto buffer = std::make_unique<Buffer>(*this);
-    if (!buffer->create(size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+    if (!buffer->create(size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
         return nullptr;
     }
     return buffers_.emplace_back(std::move(buffer)).get();
 }
 
+ITexture* Device::createTexture(Extent3u extent) {
+    auto texture = std::make_unique<Texture>(*this);
+    if (!texture->create(VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_UNORM,
+                         {.width = extent.width, .height = extent.height, .depth = extent.depth}, 1, 1,
+                         VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, false, VK_IMAGE_VIEW_TYPE_2D)) {
+        return nullptr;
+    }
+    return textures_.emplace_back(std::move(texture)).get();
+}
+
+ISampler* Device::createSampler() {
+    auto sampler = std::make_unique<Sampler>(*this);
+    if (!sampler->create(VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST,
+                         VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+                         VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, 0.0f, VK_FALSE, 1.0f, VK_FALSE, VK_COMPARE_OP_ALWAYS,
+                         0.0f, 1.0f, VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK, VK_FALSE)) {
+        return nullptr;
+    }
+    return samplers_.emplace_back(std::move(sampler)).get();
+}
+
+IDescriptorSet* Device::createDescriptorSet(IPipeline& pipeline) {
+    auto descriptor_set = std::make_unique<DescriptorSet>(*this);
+    if (!descriptor_set->create(static_cast<Pipeline&>(pipeline).getDescriptorSetLayout())) { return nullptr; }
+    return descriptor_sets_.emplace_back(std::move(descriptor_set)).get();
+}
+
 //@}
+
+bool Device::createDescriptorPool(std::uint32_t max_sets_count, std::span<const VkDescriptorPoolSize> descriptor_types,
+                                  VkDescriptorPool& descriptor_pool) {
+    const VkDescriptorPoolCreateInfo create_info{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
+        .maxSets = max_sets_count,
+        .poolSizeCount = std::uint32_t(descriptor_types.size()),
+        .pPoolSizes = descriptor_types.data(),
+    };
+
+    VkResult result = vkCreateDescriptorPool(device_, &create_info, nullptr, &descriptor_pool);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't create a descriptor pool");
+        return false;
+    }
+
+    return true;
+}
 
 bool MappedMemory::map(VkDeviceSize offset, VkDeviceSize data_size) {
     VkResult result = vkMapMemory(device_, memory_object_, offset, data_size, 0, &ptr_);

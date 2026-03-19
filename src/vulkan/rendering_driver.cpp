@@ -7,10 +7,7 @@
 #include "common/dynamic_library.h"
 #include "common/logger.h"
 
-#include <algorithm>
 #include <array>
-#include <iterator>
-#include <utility>
 
 using namespace app3d;
 using namespace app3d::rel;
