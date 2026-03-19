@@ -12,10 +12,12 @@ class RenderingDriver;
 class PhysicalDevice;
 class SwapChain;
 
-class Surface : public ISurface {
+class Surface final : public ISurface {
  public:
     explicit Surface(RenderingDriver& instance);
     ~Surface() override;
+    Surface(const Surface&) = delete;
+    Surface& operator=(const Surface&) = delete;
 
     std::uint32_t getPresentQueueFamily(std::uint32_t n = 0) const;
     const VkSurfaceCapabilitiesKHR& getCapabilities() const { return capabilities_; }

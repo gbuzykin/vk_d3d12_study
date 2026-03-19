@@ -65,8 +65,7 @@ bool RenderingDriver::isSuitablePhysicalDevice(std::uint32_t device_index, const
 ISurface* RenderingDriver::createSurface(const WindowDescriptor& win_desc) {
     auto surfaces = std::make_unique<Surface>(*this);
     if (!surfaces->create(win_desc)) { return nullptr; }
-    surfaces_.emplace_back(std::move(surfaces));
-    return surfaces_.back().get();
+    return surfaces_.emplace_back(std::move(surfaces)).get();
 }
 
 IDevice* RenderingDriver::createDevice(std::uint32_t device_index, const uxs::db::value& caps) {
