@@ -12,10 +12,23 @@ class App3DMainWindow final : public MainWindow {
  public:
     int init(int argc, char** argv);
 
+    void onIdle() override {
+        if (!device_->renderTestScene(*swap_chain_)) { terminate(-1); }
+    }
+
+    void onResize() override {
+        if (!swap_chain_->recreate(swap_chain_opts_)) { terminate(-1); }
+    }
+
  private:
     std::unique_ptr<rel::IRenderingDriver> driver_;
-    uxs::db::value device_caps_{};
+    rel::ISurface* surface_ = nullptr;
+
+    uxs::db::value device_caps_;
     rel::IDevice* device_ = nullptr;
+
+    uxs::db::value swap_chain_opts_;
+    rel::ISwapChain* swap_chain_ = nullptr;
 };
 
 int App3DMainWindow::init(int argc, char** argv) {
@@ -36,6 +49,9 @@ int App3DMainWindow::init(int argc, char** argv) {
 
     if (!createWindow(app_info.value<std::string>("name"), 1280, 1024)) { return -1; }
 
+    surface_ = driver_->createSurface(getWindowDescriptor());
+    if (!surface_) { return -1; }
+
     std::uint32_t device_index = 0;
     std::uint32_t device_count = driver_->getPhysicalDeviceCount();
 
@@ -50,6 +66,11 @@ int App3DMainWindow::init(int argc, char** argv) {
 
     device_ = driver_->createDevice(device_index, device_caps_);
     if (!device_) { return -1; }
+
+    swap_chain_ = device_->createSwapChain(*surface_, swap_chain_opts_);
+    if (!swap_chain_) { return -1; }
+
+    if (!device_->prepareTestScene(*surface_)) { return -1; }
 
     showWindow();
     return 0;

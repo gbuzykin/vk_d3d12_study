@@ -1,8 +1,9 @@
 #pragma once
 
+#include "rel/win_desc.h"
+
 #include <uxs/db/value.h>
 
-#include <cstdint>
 #include <limits>
 #include <memory>
 #include <string_view>
@@ -25,8 +26,20 @@ namespace app3d::rel {
 
 constexpr std::uint32_t INVALID_UINT32_VALUE = std::numeric_limits<std::uint32_t>::max();
 
+struct ISurface {
+    virtual ~ISurface() = default;
+};
+
+struct ISwapChain {
+    virtual ~ISwapChain() = default;
+    virtual bool recreate(const uxs::db::value& opts) = 0;
+};
+
 struct IDevice {
     virtual ~IDevice() = default;
+    virtual ISwapChain* createSwapChain(ISurface& surface, const uxs::db::value& opts) = 0;
+    virtual bool prepareTestScene(ISurface& surface) = 0;
+    virtual bool renderTestScene(ISwapChain& swap_chain) = 0;
 };
 
 struct IRenderingDriver {
@@ -35,6 +48,7 @@ struct IRenderingDriver {
     virtual std::uint32_t getPhysicalDeviceCount() const = 0;
     virtual const char* getPhysicalDeviceName(std::uint32_t device_index) const = 0;
     virtual bool isSuitablePhysicalDevice(std::uint32_t device_index, const uxs::db::value& caps) const = 0;
+    virtual ISurface* createSurface(const WindowDescriptor& win_desc) = 0;
     virtual IDevice* createDevice(std::uint32_t device_index, const uxs::db::value& caps) = 0;
 };
 
