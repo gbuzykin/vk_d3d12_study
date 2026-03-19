@@ -5,6 +5,8 @@
 #include "interfaces/i_rendering_driver.h"
 #include "util/range_helpers.h"
 
+#include <vector>
+
 namespace app3d::rel::vulkan {
 
 class Device;
@@ -21,7 +23,7 @@ class DevQueue {
 
     bool create();
     void destroy();
-    VkCommandBuffer obtainCommandBuffer();
+    bool obtainCommandBuffer(VkCommandBuffer& command_buffer);
     void releaseCommandBuffer(VkCommandBuffer command_buffer);
 
     bool submitCommandBuffers(util::multispan<const VkSemaphore, const VkPipelineStageFlags> wait_semaphore_infos,
@@ -38,8 +40,8 @@ class DevQueue {
     std::uint32_t family_index_ = INVALID_UINT32_VALUE;
     VkQueue queue_{VK_NULL_HANDLE};
     VkCommandPool command_pool_{VK_NULL_HANDLE};
-    std::vector<VkCommandBuffer> command_buffers_;
-    std::size_t used_command_buffers_count_ = 0;
+    std::vector<VkCommandBuffer> allocated_command_buffers_;
+    std::size_t used_command_buffer_count_ = 0;
 };
 
 }  // namespace app3d::rel::vulkan

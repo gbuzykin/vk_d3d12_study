@@ -44,8 +44,8 @@ bool DevQueue::create() {
 void DevQueue::destroy() {
     ObjectDestroyer<VkCommandPool>::destroy(~device_, command_pool_);
     command_pool_ = VK_NULL_HANDLE;
-    command_buffers_.clear();
-    used_command_buffers_count_ = 0;
+    allocated_command_buffers_.clear();
+    used_command_buffer_count_ = 0;
 }
 
 bool DevQueue::submitCommandBuffers(util::multispan<const VkSemaphore, const VkPipelineStageFlags> wait_semaphore_infos,
@@ -89,30 +89,32 @@ RenderTargetResult DevQueue::presentImages(std::span<const VkSemaphore> wait_sem
     return RenderTargetResult::FAILED;
 }
 
-VkCommandBuffer DevQueue::obtainCommandBuffer() {
-    if (used_command_buffers_count_ == command_buffers_.size()) {
-        command_buffers_.resize(command_buffers_.size() + 5, VK_NULL_HANDLE);
+bool DevQueue::obtainCommandBuffer(VkCommandBuffer& command_buffer) {
+    if (used_command_buffer_count_ == allocated_command_buffers_.size()) {
+        allocated_command_buffers_.resize(allocated_command_buffers_.size() + 5, VK_NULL_HANDLE);
 
         const VkCommandBufferAllocateInfo allocate_info{
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
             .commandPool = command_pool_,
             .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-            .commandBufferCount = std::uint32_t(command_buffers_.size() - used_command_buffers_count_),
+            .commandBufferCount = std::uint32_t(allocated_command_buffers_.size() - used_command_buffer_count_),
         };
 
         VkResult result = vkAllocateCommandBuffers(~device_, &allocate_info,
-                                                   command_buffers_.data() + used_command_buffers_count_);
+                                                   allocated_command_buffers_.data() + used_command_buffer_count_);
         if (result != VK_SUCCESS) {
             logError(LOG_VK "couldn't allocate command buffers");
-            return VK_NULL_HANDLE;
+            return false;
         }
     }
-    return command_buffers_[used_command_buffers_count_++];
+
+    command_buffer = allocated_command_buffers_[used_command_buffer_count_++];
+    return true;
 }
 
 void DevQueue::releaseCommandBuffer(VkCommandBuffer command_buffer) {
-    auto found_it = std::ranges::find(command_buffers_, command_buffer);
-    if (found_it == command_buffers_.end()) { return; }
-    for (auto it = found_it + 1; it != command_buffers_.end(); ++it) { *(it - 1) = *it; }
-    --used_command_buffers_count_;
+    auto found_it = std::ranges::find(allocated_command_buffers_, command_buffer);
+    if (found_it == allocated_command_buffers_.end()) { return; }
+    for (auto it = found_it + 1; it != allocated_command_buffers_.end(); ++it) { *(it - 1) = *it; }
+    --used_command_buffer_count_;
 }

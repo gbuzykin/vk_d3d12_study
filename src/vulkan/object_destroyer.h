@@ -39,6 +39,7 @@ IMPLEMENT_VK_DESTROYER(VkDevice, vkDestroyDevice);
 
 IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkInstance, VkSurfaceKHR, vkDestroySurfaceKHR);
 IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkSwapchainKHR, vkDestroySwapchainKHR);
+IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkImage, vkDestroyImage);
 IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkImageView, vkDestroyImageView);
 IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkSemaphore, vkDestroySemaphore);
 IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkFence, vkDestroyFence);
@@ -50,6 +51,9 @@ IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkPipelineLayout, vkDestroyPipeline
 IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkPipeline, vkDestroyPipeline);
 IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkBuffer, vkDestroyBuffer);
 IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkDeviceMemory, vkFreeMemory);
+IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkSampler, vkDestroySampler);
+IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkDescriptorPool, vkDestroyDescriptorPool);
+IMPLEMENT_VK_DESTROYER_WITH_PARENT(VkDevice, VkDescriptorSetLayout, vkDestroyDescriptorSetLayout);
 
 #undef IMPLEMENT_VK_DESTROYER_WITH_PARENT
 

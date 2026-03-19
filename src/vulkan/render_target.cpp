@@ -1,6 +1,7 @@
 #include "render_target.h"
 
 #include "buffer.h"
+#include "descriptor_set.h"
 #include "device.h"
 #include "object_destroyer.h"
 #include "pipeline.h"
@@ -103,7 +104,10 @@ bool RenderTarget::create(const uxs::db::value& opts) {
         return false;
     }
 
-    command_buffer_ = CommandBuffer::wrap(device_.getGraphicsQueue().obtainCommandBuffer());
+    VkCommandBuffer command_buffer = VK_NULL_HANDLE;
+    if (!device_.getGraphicsQueue().obtainCommandBuffer(command_buffer)) { return false; }
+    command_buffer_ = CommandBuffer::wrap(command_buffer);
+
     return true;
 }
 
@@ -244,6 +248,11 @@ void RenderTarget::bindPipeline(IPipeline& pipeline) {
 
 void RenderTarget::bindVertexBuffer(IBuffer& buffer, std::size_t offset, std::uint32_t binding) {
     command_buffer_.bindVertexBuffers(binding, {std::array{~static_cast<Buffer&>(buffer)}, std::array{offset}});
+}
+
+void RenderTarget::bindDescriptorSet(IPipeline& pipeline, IDescriptorSet& descriptor_set, std::uint32_t set_index) {
+    command_buffer_.bindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS, static_cast<Pipeline&>(pipeline).getLayout(),
+                                       set_index, std::array{~static_cast<DescriptorSet&>(descriptor_set)}, {});
 }
 
 void RenderTarget::drawGeometry(std::uint32_t vertex_count, std::uint32_t instance_count, std::uint32_t first_vertex,
