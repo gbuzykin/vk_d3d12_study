@@ -50,8 +50,6 @@ class Device final : public IDevice {
     bool createFence(bool signaled, VkFence& fence);
     bool waitForFences(std::span<const VkFence> fences, VkBool32 wait_for_all, std::uint64_t timeout);
     bool resetFences(std::span<const VkFence> fences);
-    VkCommandBuffer obtainCommandBuffer();
-    void releaseCommandBuffer(VkCommandBuffer command_buffer);
     bool writeToDeviceLocalMemory(VkDeviceSize data_size, const void* data, VkBuffer dst, VkDeviceSize dst_offset,
                                   VkAccessFlags dst_current_access, VkAccessFlags dst_new_access,
                                   VkPipelineStageFlags dst_generating_stages, VkPipelineStageFlags dst_consuming_stages,
@@ -76,21 +74,15 @@ class Device final : public IDevice {
     VkDevice device_{VK_NULL_HANDLE};
     DevQueue graphics_queue_;
     DevQueue compute_queue_;
+    DevQueue transfer_queue_;
     DevQueue present_queue_;
 
-    VkCommandPool command_pool_{VK_NULL_HANDLE};
-    std::vector<VkCommandBuffer> command_buffers_;
-    std::size_t used_command_buffers_count_ = 0;
     std::vector<std::unique_ptr<ShaderModule>> shader_modules_;
     std::vector<std::unique_ptr<Pipeline>> pipelines_;
     std::vector<std::unique_ptr<Buffer>> buffers_;
     CommandBuffer transfer_command_buffer_;
 
     static constexpr std::uint64_t FINISH_TRANSFER_TIMEOUT = 500'000'000;
-
-    bool createCommandPool(VkCommandPoolCreateFlags flags, std::uint32_t queue_family, VkCommandPool& command_pool);
-    bool allocateCommandBuffers(VkCommandPool command_pool, VkCommandBufferLevel level,
-                                std::span<VkCommandBuffer> command_buffers);
 
     bool writeToHostVisibleMemory(VkDeviceMemory memory_object, VkDeviceSize offset, VkDeviceSize data_size,
                                   const void* data);

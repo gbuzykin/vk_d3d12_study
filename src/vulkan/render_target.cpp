@@ -21,7 +21,7 @@ RenderTarget::RenderTarget(Device& device, SwapChain& swap_chain) : device_(devi
 
 RenderTarget::~RenderTarget() {
     destroyImageViews();
-    device_.releaseCommandBuffer(~command_buffer_);
+    device_.getGraphicsQueue().releaseCommandBuffer(~command_buffer_);
     ObjectDestroyer<VkRenderPass>::destroy(~device_, render_pass_);
     ObjectDestroyer<VkFence>::destroy(~device_, fence_drawing_);
     ObjectDestroyer<VkSemaphore>::destroy(~device_, sem_image_acquired_);
@@ -103,7 +103,7 @@ bool RenderTarget::create(const uxs::db::value& opts) {
         return false;
     }
 
-    command_buffer_ = CommandBuffer::wrap(device_.obtainCommandBuffer());
+    command_buffer_ = CommandBuffer::wrap(device_.getGraphicsQueue().obtainCommandBuffer());
     return true;
 }
 
