@@ -1,6 +1,7 @@
 #include "render_target.h"
 
 #include "buffer.h"
+#include "descriptor_set.h"
 #include "device.h"
 #include "object_destroyer.h"
 #include "pipeline.h"
@@ -261,6 +262,11 @@ void RenderTarget::bindPipeline(IPipeline& pipeline) {
 void RenderTarget::bindVertexBuffer(IBuffer& buffer, std::uint32_t offset, std::uint32_t slot) {
     command_buffer_.bindVertexBuffers(slot,
                                       {std::array{~static_cast<Buffer&>(buffer)}, std::array{VkDeviceSize(offset)}});
+}
+
+void RenderTarget::bindDescriptorSet(IPipeline& pipeline, IDescriptorSet& descriptor_set, std::uint32_t set_index) {
+    command_buffer_.bindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS, static_cast<Pipeline&>(pipeline).getLayout(),
+                                       set_index, std::array{~static_cast<DescriptorSet&>(descriptor_set)}, {});
 }
 
 void RenderTarget::drawGeometry(std::uint32_t vertex_count, std::uint32_t instance_count, std::uint32_t first_vertex,

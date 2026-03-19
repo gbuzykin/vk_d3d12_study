@@ -130,13 +130,14 @@ bool SwapChain::create(const uxs::db::value& opts) {
         .oldSwapchain = swap_chain_,
     };
 
+    const VkSwapchainKHR old_swap_chain = swap_chain_;
     VkResult result = vkCreateSwapchainKHR(~device_, &create_info, nullptr, &swap_chain_);
     if (result != VK_SUCCESS || swap_chain_ == VK_NULL_HANDLE) {
         logError(LOG_VK "couldn't create a swap chain");
         return false;
     }
 
-    ObjectDestroyer<VkSwapchainKHR>::destroy(~device_, create_info.oldSwapchain);
+    ObjectDestroyer<VkSwapchainKHR>::destroy(~device_, old_swap_chain);
 
     if (!loadImageHandles()) { return false; }
     if (render_target_ && !render_target_->createImageViews()) { return false; }

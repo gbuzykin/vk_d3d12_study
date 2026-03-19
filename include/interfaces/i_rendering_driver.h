@@ -73,6 +73,20 @@ struct IBuffer {
     virtual bool updateBuffer(std::span<const std::uint8_t> data, std::uint64_t offset) = 0;
 };
 
+struct ITexture {
+    virtual ~ITexture() = default;
+    virtual bool updateTexture(std::span<const std::uint8_t> data, Vec3i offset, Extent3u extent) = 0;
+};
+
+struct ISampler {
+    virtual ~ISampler() = default;
+};
+
+struct IDescriptorSet {
+    virtual ~IDescriptorSet() = default;
+    virtual void updateCombinedTextureSamplerDescriptor(ITexture& texture, ISampler& sampler) = 0;
+};
+
 struct IRenderTarget {
     virtual ~IRenderTarget() = default;
     virtual RenderTargetResult beginRenderTarget(const Color4f& clear_color) = 0;
@@ -81,6 +95,7 @@ struct IRenderTarget {
     virtual void setScissor(const Rect& rect) = 0;
     virtual void bindPipeline(IPipeline& pipeline) = 0;
     virtual void bindVertexBuffer(IBuffer& buffer, std::uint32_t offset, std::uint32_t slot) = 0;
+    virtual void bindDescriptorSet(IPipeline& pipeline, IDescriptorSet& descriptor_set, std::uint32_t set_index) = 0;
     virtual void drawGeometry(std::uint32_t vertex_count, std::uint32_t instance_count, std::uint32_t first_vertex,
                               std::uint32_t first_instance) = 0;
 };
@@ -103,6 +118,9 @@ struct IDevice {
     virtual IPipeline* createPipeline(IRenderTarget& render_target, std::span<IShaderModule* const> shader_modules,
                                       const uxs::db::value& config) = 0;
     virtual IBuffer* createBuffer(std::uint64_t size) = 0;
+    virtual ITexture* createTexture(Extent3u extent) = 0;
+    virtual ISampler* createSampler() = 0;
+    virtual IDescriptorSet* createDescriptorSet(IPipeline& pipeline) = 0;
 };
 
 struct IRenderingDriver {

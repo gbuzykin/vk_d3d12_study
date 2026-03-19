@@ -42,9 +42,9 @@ bool Buffer::create(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropert
 //@{ IBuffer
 
 bool Buffer::updateBuffer(std::span<const std::uint8_t> data, std::uint64_t offset) {
-    return device_.writeToDeviceLocalMemory(VkDeviceSize(data.size()), data.data(), buffer_, VkDeviceSize(offset), 0,
-                                            VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                                            VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, {});
+    return device_.writeBufferInDeviceLocalMemory(
+        VkDeviceSize(data.size()), data.data(), buffer_, VkDeviceSize(offset), 0, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, {});
 }
 
 //@}

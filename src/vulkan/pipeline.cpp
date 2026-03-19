@@ -8,6 +8,7 @@
 #include "common/logger.h"
 
 #include <array>
+#include <unordered_map>
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -21,38 +22,115 @@ Pipeline::Pipeline(Device& device) : device_(device) {}
 Pipeline::~Pipeline() {
     ObjectDestroyer<VkPipeline>::destroy(~device_, pipeline_);
     ObjectDestroyer<VkPipelineLayout>::destroy(~device_, pipeline_layout_);
+    ObjectDestroyer<VkDescriptorSetLayout>::destroy(~device_, descriptor_set_layout_);
 }
+
+namespace {
+const std::unordered_map<std::string_view, VkShaderStageFlagBits> g_shader_stages{
+    {"ALL", VK_SHADER_STAGE_ALL_GRAPHICS},
+    {"VERTEX", VK_SHADER_STAGE_VERTEX_BIT},
+    {"PIXEL", VK_SHADER_STAGE_FRAGMENT_BIT},
+};
+const std::unordered_map<std::string_view, VkFormat> g_formats{
+    {"FLOAT", VK_FORMAT_R32_SFLOAT},        {"FLOAT2", VK_FORMAT_R32G32_SFLOAT},
+    {"FLOAT3", VK_FORMAT_R32G32B32_SFLOAT}, {"FLOAT4", VK_FORMAT_R32G32B32A32_SFLOAT},
+    {"BYTE4", VK_FORMAT_R8G8B8A8_UNORM},
+};
+const std::unordered_map<VkFormat, std::pair<std::uint32_t, std::uint32_t>> g_format_size_alignment{
+    {VK_FORMAT_R32_SFLOAT, {4, 4}},           {VK_FORMAT_R32G32_SFLOAT, {8, 4}},  {VK_FORMAT_R32G32B32_SFLOAT, {12, 4}},
+    {VK_FORMAT_R32G32B32A32_SFLOAT, {16, 4}}, {VK_FORMAT_R8G8B8A8_UNORM, {4, 4}},
+};
+
+VkShaderStageFlagBits parseShaderStage(std::string_view stage) {
+    auto it = g_shader_stages.find(stage);
+    if (it != g_shader_stages.end()) { return it->second; }
+    throw uxs::db::database_error("unknown shader stage");
+}
+
+VkFormat parseFormat(std::string_view fmt) {
+    auto it = g_formats.find(fmt);
+    if (it != g_formats.end()) { return it->second; }
+    throw uxs::db::database_error("unknown format");
+}
+
+std::pair<std::uint32_t, std::uint32_t> getFormatSizeAlignment(VkFormat fmt) {
+    auto it = g_format_size_alignment.find(fmt);
+    if (it != g_format_size_alignment.end()) { return it->second; }
+    logError(LOG_VK "unknown format");
+    return {0, 0};
+}
+}  // namespace
 
 bool Pipeline::create(RenderTarget& render_target, std::span<IShaderModule* const> shader_modules,
                       const uxs::db::value& config) {
+    // Shader stages :
+
     std::vector<VkPipelineShaderStageCreateInfo> shader_stage_create_infos;
 
-    shader_stage_create_infos.reserve(shader_modules.size());
-    const std::array stages{VK_SHADER_STAGE_VERTEX_BIT, VK_SHADER_STAGE_FRAGMENT_BIT};
-    for (std::size_t n = 0; n < shader_modules.size(); ++n) {
+    const auto& shader_stages = config.value("stages");
+    shader_stage_create_infos.reserve(shader_stages.size());
+
+    std::uint32_t def_module_index = 0;
+    for (const auto& module : shader_stages.as_array()) {
+        const std::uint32_t index = module.value_or<std::uint32_t>("module_index", def_module_index++);
+        if (index >= shader_modules.size()) { throw uxs::db::database_error("shader module index out of range"); }
         shader_stage_create_infos.emplace_back(VkPipelineShaderStageCreateInfo{
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-            .stage = stages[n],
-            .module = ~static_cast<ShaderModule&>(*shader_modules[n]),
-            .pName = "main",
+            .stage = parseShaderStage(module.value("stage").as_string_view()),
+            .module = ~static_cast<ShaderModule&>(*shader_modules[index]),
+            .pName = module.value("entry").as_c_string(),
         });
     }
 
-    const std::array vertex_input_binding_descriptions{
-        VkVertexInputBindingDescription{
-            .binding = 0,
-            .stride = 3 * sizeof(float),
+    // Vertex layouts :
+
+    std::vector<VkVertexInputBindingDescription> vertex_input_binding_descriptions;
+    std::vector<VkVertexInputAttributeDescription> vertex_attribute_descriptions;
+
+    const auto& vertex_layouts = config.value("vertex_layouts");
+    vertex_input_binding_descriptions.reserve(vertex_layouts.size());
+
+    std::uint32_t def_slot = 0;
+
+    for (const auto& layout : vertex_layouts.as_array()) {
+        const std::uint32_t slot = layout.value_or<std::uint32_t>("slot", def_slot);
+        def_slot = slot + 1;
+
+        const auto& attributes = layout.value("attributes");
+        vertex_attribute_descriptions.reserve(vertex_attribute_descriptions.size() + attributes.size());
+
+        const auto align_up = [](auto v, auto alignment) { return (v + alignment - 1) & ~(alignment - 1); };
+
+        std::uint32_t def_location = 0;
+        std::uint32_t def_offset = 0;
+        std::uint32_t max_alignment = 0;
+
+        for (const auto& attribute : attributes.as_array()) {
+            const std::uint32_t location = attribute.value_or<std::uint32_t>("location", def_location);
+            def_location = location + 1;
+
+            const auto format = parseFormat(attribute.value("format").as_string_view());
+            const auto attribute_size_alignment = getFormatSizeAlignment(format);
+            def_offset = align_up(def_offset, attribute_size_alignment.second);
+            max_alignment = std::max(attribute_size_alignment.second, max_alignment);
+
+            const std::uint32_t offset = attribute.value_or<std::uint32_t>("offset", def_offset);
+            def_offset = offset + attribute_size_alignment.first;
+
+            vertex_attribute_descriptions.emplace_back(VkVertexInputAttributeDescription{
+                .location = location, .binding = slot, .format = format, .offset = offset});
+        }
+
+        const std::uint32_t stride = layout.value_or<std::uint32_t>("stride", align_up(def_offset, max_alignment));
+        vertex_input_binding_descriptions.emplace_back(VkVertexInputBindingDescription{
+            .binding = slot,
+            .stride = stride,
             .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
-        },
-    };
-    const std::array vertex_attribute_descriptions{
-        VkVertexInputAttributeDescription{
-            .location = 0,
-            .binding = 0,
-            .format = VK_FORMAT_R32G32B32_SFLOAT,
-            .offset = 0,
-        },
-    };
+        });
+    }
+
+    // Others :
+
     const VkPipelineVertexInputStateCreateInfo vertex_input_state_create_info{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
         .vertexBindingDescriptionCount = std::uint32_t(vertex_input_binding_descriptions.size()),
@@ -128,9 +206,67 @@ bool Pipeline::create(RenderTarget& render_target, std::span<IShaderModule* cons
         .pDynamicStates = dynamic_states.data(),
     };
 
-    std::vector<VkDescriptorSetLayout> descriptor_set_layouts;
-    std::vector<VkPushConstantRange> push_constant_ranges;
+    if (!createDescriptorSetLayout(std::array{
+            VkDescriptorSetLayoutBinding{
+                .binding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
+        })) {
+        return false;
+    }
 
+    if (!createPipelineLayout(std::array{descriptor_set_layout_}, {})) { return false; }
+
+    const VkGraphicsPipelineCreateInfo graphics_pipeline_create_info{
+        .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+        .stageCount = std::uint32_t(shader_stage_create_infos.size()),
+        .pStages = shader_stage_create_infos.data(),
+        .pVertexInputState = &vertex_input_state_create_info,
+        .pInputAssemblyState = &input_assembly_state_create_info,
+        .pViewportState = &viewport_state_create_info,
+        .pRasterizationState = &rasterization_state_create_info,
+        .pMultisampleState = &multisample_state_create_info,
+        .pColorBlendState = &blend_state_create_info,
+        .pDynamicState = &dynamic_state_create_info,
+        .layout = pipeline_layout_,
+        .renderPass = render_target.getRenderPass(),
+        .basePipelineIndex = -1,
+    };
+
+    VkResult result = vkCreateGraphicsPipelines(~device_, VK_NULL_HANDLE, 1, &graphics_pipeline_create_info, nullptr,
+                                                &pipeline_);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't create a graphics pipeline");
+        return false;
+    }
+
+    return true;
+}
+
+//@{ IPipeline
+
+//@}
+
+bool Pipeline::createDescriptorSetLayout(std::span<const VkDescriptorSetLayoutBinding> bindings) {
+    const VkDescriptorSetLayoutCreateInfo create_info{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = std::uint32_t(bindings.size()),
+        .pBindings = bindings.data(),
+    };
+
+    VkResult result = vkCreateDescriptorSetLayout(~device_, &create_info, nullptr, &descriptor_set_layout_);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't create a layout for descriptor sets");
+        return false;
+    }
+
+    return true;
+}
+
+bool Pipeline::createPipelineLayout(std::span<const VkDescriptorSetLayout> descriptor_set_layouts,
+                                    std::span<const VkPushConstantRange> push_constant_ranges) {
     const VkPipelineLayoutCreateInfo pipeline_layout_create_info{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount = std::uint32_t(descriptor_set_layouts.size()),
@@ -145,31 +281,5 @@ bool Pipeline::create(RenderTarget& render_target, std::span<IShaderModule* cons
         return false;
     }
 
-    const VkGraphicsPipelineCreateInfo graphics_pipeline_create_info{
-        .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-        .stageCount = std::uint32_t(shader_stage_create_infos.size()),
-        .pStages = shader_stage_create_infos.data(),
-        .pVertexInputState = &vertex_input_state_create_info,
-        .pInputAssemblyState = &input_assembly_state_create_info,
-        .pViewportState = &viewport_state_create_info,
-        .pRasterizationState = &rasterization_state_create_info,
-        .pMultisampleState = &multisample_state_create_info,
-        .pColorBlendState = &blend_state_create_info,
-        .pDynamicState = &dynamic_state_create_info,
-        .layout = pipeline_layout_,
-        .renderPass = render_target.getRenderPassHandle(),
-        .basePipelineIndex = -1,
-    };
-
-    result = vkCreateGraphicsPipelines(~device_, VK_NULL_HANDLE, 1, &graphics_pipeline_create_info, nullptr, &pipeline_);
-    if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't create a graphics pipeline");
-        return false;
-    }
-
     return true;
 }
-
-//@{ IPipeline
-
-//@}

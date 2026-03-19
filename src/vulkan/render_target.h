@@ -20,7 +20,7 @@ class RenderTarget final : public IRenderTarget {
     bool createImageViews();
     void destroyImageViews();
 
-    VkRenderPass getRenderPassHandle() { return render_pass_; }
+    VkRenderPass getRenderPass() { return render_pass_; }
 
     //@{ IRenderTarget
     RenderTargetResult beginRenderTarget(const Color4f& clear_color) override;
@@ -29,6 +29,7 @@ class RenderTarget final : public IRenderTarget {
     void setScissor(const Rect& rect) override;
     void bindPipeline(IPipeline& pipeline) override;
     void bindVertexBuffer(IBuffer& buffer, std::uint32_t offset, std::uint32_t slot) override;
+    void bindDescriptorSet(IPipeline& pipeline, IDescriptorSet& descriptor_set, std::uint32_t set_index) override;
     void drawGeometry(std::uint32_t vertex_count, std::uint32_t instance_count, std::uint32_t first_vertex,
                       std::uint32_t first_instance) override;
     //@}

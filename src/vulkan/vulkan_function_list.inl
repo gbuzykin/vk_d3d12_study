@@ -91,9 +91,6 @@ DEVICE_LEVEL_VK_FUNCTION(vkDestroyFence);
 DEVICE_LEVEL_VK_FUNCTION(vkWaitForFences);
 DEVICE_LEVEL_VK_FUNCTION(vkResetFences);
 
-DEVICE_LEVEL_VK_FUNCTION(vkCreateCommandPool);
-DEVICE_LEVEL_VK_FUNCTION(vkDestroyCommandPool);
-
 DEVICE_LEVEL_VK_FUNCTION(vkCreateShaderModule);
 DEVICE_LEVEL_VK_FUNCTION(vkDestroyShaderModule);
 
@@ -103,16 +100,14 @@ DEVICE_LEVEL_VK_FUNCTION(vkDestroyPipelineLayout);
 DEVICE_LEVEL_VK_FUNCTION(vkCreateGraphicsPipelines);
 DEVICE_LEVEL_VK_FUNCTION(vkDestroyPipeline);
 
-DEVICE_LEVEL_VK_FUNCTION(vkCreateBuffer);
-DEVICE_LEVEL_VK_FUNCTION(vkDestroyBuffer);
-DEVICE_LEVEL_VK_FUNCTION(vkGetBufferMemoryRequirements);
-DEVICE_LEVEL_VK_FUNCTION(vkAllocateMemory);
-DEVICE_LEVEL_VK_FUNCTION(vkFreeMemory);
-DEVICE_LEVEL_VK_FUNCTION(vkBindBufferMemory);
-DEVICE_LEVEL_VK_FUNCTION(vkMapMemory);
-DEVICE_LEVEL_VK_FUNCTION(vkUnmapMemory);
-DEVICE_LEVEL_VK_FUNCTION(vkFlushMappedMemoryRanges);
+DEVICE_LEVEL_VK_FUNCTION(vkCreateSampler);
+DEVICE_LEVEL_VK_FUNCTION(vkDestroySampler);
 
+DEVICE_LEVEL_VK_FUNCTION(vkCreateImage);
+DEVICE_LEVEL_VK_FUNCTION(vkDestroyImage);
+
+DEVICE_LEVEL_VK_FUNCTION(vkCreateCommandPool);
+DEVICE_LEVEL_VK_FUNCTION(vkDestroyCommandPool);
 DEVICE_LEVEL_VK_FUNCTION(vkAllocateCommandBuffers);
 DEVICE_LEVEL_VK_FUNCTION(vkFreeCommandBuffers);
 DEVICE_LEVEL_VK_FUNCTION(vkResetCommandBuffer);
@@ -122,11 +117,33 @@ DEVICE_LEVEL_VK_FUNCTION(vkCmdBeginRenderPass);
 DEVICE_LEVEL_VK_FUNCTION(vkCmdEndRenderPass);
 DEVICE_LEVEL_VK_FUNCTION(vkCmdPipelineBarrier);
 DEVICE_LEVEL_VK_FUNCTION(vkCmdCopyBuffer);
+DEVICE_LEVEL_VK_FUNCTION(vkCmdCopyBufferToImage);
 DEVICE_LEVEL_VK_FUNCTION(vkCmdBindPipeline);
 DEVICE_LEVEL_VK_FUNCTION(vkCmdSetViewport);
 DEVICE_LEVEL_VK_FUNCTION(vkCmdSetScissor);
 DEVICE_LEVEL_VK_FUNCTION(vkCmdBindVertexBuffers);
+DEVICE_LEVEL_VK_FUNCTION(vkCmdBindDescriptorSets);
 DEVICE_LEVEL_VK_FUNCTION(vkCmdDraw);
+
+DEVICE_LEVEL_VK_FUNCTION(vkCreateBuffer);
+DEVICE_LEVEL_VK_FUNCTION(vkDestroyBuffer);
+DEVICE_LEVEL_VK_FUNCTION(vkGetBufferMemoryRequirements);
+DEVICE_LEVEL_VK_FUNCTION(vkGetImageMemoryRequirements);
+DEVICE_LEVEL_VK_FUNCTION(vkAllocateMemory);
+DEVICE_LEVEL_VK_FUNCTION(vkFreeMemory);
+DEVICE_LEVEL_VK_FUNCTION(vkBindBufferMemory);
+DEVICE_LEVEL_VK_FUNCTION(vkBindImageMemory);
+DEVICE_LEVEL_VK_FUNCTION(vkMapMemory);
+DEVICE_LEVEL_VK_FUNCTION(vkUnmapMemory);
+DEVICE_LEVEL_VK_FUNCTION(vkFlushMappedMemoryRanges);
+
+DEVICE_LEVEL_VK_FUNCTION(vkCreateDescriptorPool);
+DEVICE_LEVEL_VK_FUNCTION(vkDestroyDescriptorPool);
+DEVICE_LEVEL_VK_FUNCTION(vkCreateDescriptorSetLayout);
+DEVICE_LEVEL_VK_FUNCTION(vkDestroyDescriptorSetLayout);
+DEVICE_LEVEL_VK_FUNCTION(vkAllocateDescriptorSets);
+DEVICE_LEVEL_VK_FUNCTION(vkFreeDescriptorSets);
+DEVICE_LEVEL_VK_FUNCTION(vkUpdateDescriptorSets);
 
 #undef DEVICE_LEVEL_VK_FUNCTION
 
