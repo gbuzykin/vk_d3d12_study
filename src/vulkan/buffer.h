@@ -12,13 +12,21 @@ class Buffer : public IBuffer {
  public:
     explicit Buffer(Device& device);
     ~Buffer() override;
+
+    Buffer(Buffer&& buf) noexcept
+        : device_(buf.device_), size_(buf.size_), buffer_(buf.buffer_), allocation_(buf.allocation_) {
+        size_ = 0, buffer_ = VK_NULL_HANDLE, allocation_ = VK_NULL_HANDLE;
+    }
+
     Buffer(const Buffer&) = delete;
     Buffer& operator=(const Buffer&) = delete;
 
-    bool create(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlagBits desired_properties);
+    VkDeviceSize getSize() const { return size_; }
+
+    bool create(VkDeviceSize size, VkBufferUsageFlags usage, bool host_access = false);
 
     VkBuffer operator~() { return buffer_; }
-    VkDeviceMemory getMemoryObject() { return memory_object_; }
+    VmaAllocation getAllocation() { return allocation_; }
 
     //@{ IBuffer
     bool updateBuffer(std::span<const std::uint8_t> data, std::uint64_t offset) override;
@@ -26,10 +34,9 @@ class Buffer : public IBuffer {
 
  private:
     Device& device_;
+    VkDeviceSize size_ = 0;
     VkBuffer buffer_{VK_NULL_HANDLE};
-    VkDeviceMemory memory_object_{VK_NULL_HANDLE};
-
-    bool allocateAndBindMemoryObjectToBuffer(VkMemoryPropertyFlagBits desired_properties);
+    VmaAllocation allocation_{VK_NULL_HANDLE};
 };
 
 }  // namespace app3d::rel::vulkan

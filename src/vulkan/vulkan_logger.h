@@ -1,8 +1,9 @@
 #pragma once
 
-#include "vulkan_api.h"
-
 #include "common/logger.h"
+
+#define VK_NO_PROTOTYPES
+#include <vulkan/vulkan.h>
 
 #define LOG_VK "Vulkan: "
 

@@ -19,7 +19,6 @@ class Texture final : public ITexture {
                 VkImageUsageFlags usage, bool cubemap, VkImageViewType view_type);
 
     VkImage operator~() { return image_; }
-    VkDeviceMemory getMemoryObject() { return memory_object_; }
     VkImageView getImageView() { return image_view_; }
 
     //@{ ITexture
@@ -29,11 +28,10 @@ class Texture final : public ITexture {
  private:
     Device& device_;
     VkImage image_{VK_NULL_HANDLE};
-    VkDeviceMemory memory_object_{VK_NULL_HANDLE};
+    VmaAllocation allocation_{VK_NULL_HANDLE};
     VkImageView image_view_{VK_NULL_HANDLE};
 
     bool createImageView(VkImageViewType view_type, VkFormat format, VkImageAspectFlags aspect);
-    bool allocateAndBindMemoryObjectToImage(VkMemoryPropertyFlagBits desired_properties);
 };
 
 }  // namespace app3d::rel::vulkan

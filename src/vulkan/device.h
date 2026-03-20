@@ -1,7 +1,10 @@
 #pragma once
 
+#include "buffer.h"
 #include "command_buffer.h"
 #include "dev_queue.h"
+
+#include <uxs/dynarray.h>
 
 namespace app3d::rel::vulkan {
 
@@ -14,29 +17,6 @@ class Buffer;
 class Texture;
 class Sampler;
 class DescriptorSet;
-
-class MappedMemory {
- public:
-    MappedMemory(VkDevice device, VkDeviceMemory memory_object) : device_(device), memory_object_(memory_object) {}
-    ~MappedMemory() { release(); }
-    MappedMemory(const MappedMemory&) = delete;
-    MappedMemory& operator=(const MappedMemory&) = delete;
-
-    void* ptr() const { return ptr_; }
-    bool map(VkDeviceSize offset, VkDeviceSize data_size);
-    void release() {
-        if (!ptr_) { return; }
-        vkUnmapMemory(device_, memory_object_);
-        ptr_ = nullptr;
-    }
-
-    VkDeviceMemory operator~() { return memory_object_; }
-
- private:
-    VkDevice device_;
-    VkDeviceMemory memory_object_;
-    void* ptr_ = nullptr;
-};
 
 class Device final : public IDevice {
  public:
@@ -60,22 +40,19 @@ class Device final : public IDevice {
                                std::uint32_t(copy_descriptors.size()), copy_descriptors.data());
     }
 
-    bool writeBufferInDeviceLocalMemory(VkDeviceSize data_size, const void* data, VkBuffer dst, VkDeviceSize dst_offset,
-                                        VkAccessFlags dst_current_access, VkAccessFlags dst_new_access,
-                                        VkPipelineStageFlags dst_generating_stages,
-                                        VkPipelineStageFlags dst_consuming_stages,
-                                        std::span<const VkSemaphore> signal_semaphores);
-    bool writeImageInDeviceLocalMemory(VkDeviceSize data_size, const void* data, VkImage dst,
-                                       VkImageSubresourceLayers dst_subresource, VkOffset3D dst_offset,
-                                       VkExtent3D dst_extent, VkImageLayout dst_current_layout,
-                                       VkImageLayout dst_new_layout, VkAccessFlags dst_current_access,
-                                       VkAccessFlags dst_new_access, VkImageAspectFlags dst_aspect,
-                                       VkPipelineStageFlags dst_generating_stages,
-                                       VkPipelineStageFlags dst_consuming_stages,
-                                       std::span<const VkSemaphore> signal_semaphores);
+    bool updateBuffer(const void* data, VkDeviceSize data_size, VkBuffer dst, VkDeviceSize dst_offset,
+                      VkAccessFlags dst_current_access, VkAccessFlags dst_new_access,
+                      VkPipelineStageFlags dst_generating_stages, VkPipelineStageFlags dst_consuming_stages,
+                      std::span<const VkSemaphore> signal_semaphores);
+    bool updateImage(const void* data, VkDeviceSize data_size, VkImage dst, VkImageSubresourceLayers dst_subresource,
+                     VkOffset3D dst_offset, VkExtent3D dst_extent, VkImageLayout dst_current_layout,
+                     VkImageLayout dst_new_layout, VkAccessFlags dst_current_access, VkAccessFlags dst_new_access,
+                     VkImageAspectFlags dst_aspect, VkPipelineStageFlags dst_generating_stages,
+                     VkPipelineStageFlags dst_consuming_stages, std::span<const VkSemaphore> signal_semaphores);
 
     VkDevice operator~() { return device_; }
     PhysicalDevice& getPhysicalDevice() { return physical_device_; }
+    VmaAllocator getAllocator() { return allocator_; }
     DevQueue& getGraphicsQueue() { return graphics_queue_; }
     DevQueue& getPresentQueue() { return present_queue_; }
     DevQueue& getComputeQueue() { return compute_queue_; }
@@ -100,6 +77,7 @@ class Device final : public IDevice {
     DevQueue transfer_queue_;
     DevQueue present_queue_;
 
+    VmaAllocator allocator_{VK_NULL_HANDLE};
     VkDescriptorPool descriptor_pool_{VK_NULL_HANDLE};
 
     std::vector<std::unique_ptr<SwapChain>> swap_chains_;
@@ -110,15 +88,20 @@ class Device final : public IDevice {
     std::vector<std::unique_ptr<Sampler>> samplers_;
     std::vector<std::unique_ptr<DescriptorSet>> descriptor_sets_;
 
-    CommandBuffer transfer_command_buffer_;
+    struct TransferKit {
+        explicit TransferKit(Device& device) : staging_buffer(device) {}
+        VkFence fence;
+        Buffer staging_buffer;
+        CommandBuffer command_buffer;
+    };
 
+    static constexpr std::uint32_t TRANSFER_KIT_COUNT = 1;
     static constexpr std::uint64_t FINISH_TRANSFER_TIMEOUT = 500'000'000;
+    std::uint32_t current_transfer_kit_ = 0;
+    uxs::inline_dynarray<TransferKit, TRANSFER_KIT_COUNT> transfer_kits_;
 
     bool createDescriptorPool(std::uint32_t max_sets_count, std::span<const VkDescriptorPoolSize> descriptor_types,
                               VkDescriptorPool& descriptor_pool);
-
-    bool writeToHostVisibleMemory(VkDeviceMemory memory_object, VkDeviceSize offset, VkDeviceSize data_size,
-                                  const void* data);
 };
 
 }  // namespace app3d::rel::vulkan

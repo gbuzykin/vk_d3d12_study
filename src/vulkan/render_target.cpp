@@ -1,6 +1,5 @@
 #include "render_target.h"
 
-#include "buffer.h"
 #include "descriptor_set.h"
 #include "device.h"
 #include "object_destroyer.h"

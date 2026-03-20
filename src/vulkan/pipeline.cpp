@@ -64,7 +64,7 @@ bool Pipeline::create(RenderTarget& render_target, std::span<IShaderModule* cons
                       const uxs::db::value& config) {
     // Shader stages :
 
-    std::vector<VkPipelineShaderStageCreateInfo> shader_stage_create_infos;
+    uxs::inline_dynarray<VkPipelineShaderStageCreateInfo> shader_stage_create_infos;
 
     const auto& shader_stages = config.value("stages");
     shader_stage_create_infos.reserve(shader_stages.size());
@@ -83,11 +83,10 @@ bool Pipeline::create(RenderTarget& render_target, std::span<IShaderModule* cons
 
     // Vertex layouts :
 
-    std::vector<VkVertexInputBindingDescription> vertex_input_binding_descriptions;
-    std::vector<VkVertexInputAttributeDescription> vertex_attribute_descriptions;
+    uxs::inline_dynarray<VkVertexInputBindingDescription> vertex_input_binding_descriptions;
+    uxs::inline_dynarray<VkVertexInputAttributeDescription> vertex_attribute_descriptions;
 
     const auto& vertex_layouts = config.value("vertex_layouts");
-    vertex_input_binding_descriptions.reserve(vertex_layouts.size());
 
     std::uint32_t def_slot = 0;
 
@@ -96,7 +95,6 @@ bool Pipeline::create(RenderTarget& render_target, std::span<IShaderModule* cons
         def_slot = slot + 1;
 
         const auto& attributes = layout.value("attributes");
-        vertex_attribute_descriptions.reserve(vertex_attribute_descriptions.size() + attributes.size());
 
         const auto align_up = [](auto v, auto alignment) { return (v + alignment - 1) & ~(alignment - 1); };
 

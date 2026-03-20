@@ -37,6 +37,7 @@ bool DevQueue::create() {
         return false;
     }
 
+    allocated_command_buffers_.reserve(16);
     return true;
 }
 
