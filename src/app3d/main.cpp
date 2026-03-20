@@ -6,6 +6,7 @@
 
 #include <uxs/db/json.h>
 #include <uxs/io/filebuf.h>
+#include <uxs/io/iostate.h>
 
 #include <stb_image.h>
 

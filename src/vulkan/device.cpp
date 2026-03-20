@@ -1,6 +1,5 @@
 #include "device.h"
 
-#include "buffer.h"
 #include "descriptor_set.h"
 #include "object_destroyer.h"
 #include "pipeline.h"
@@ -14,7 +13,7 @@
 #include "vulkan_logger.h"
 #include "wrappers.h"
 
-#include <unordered_map>
+#include <array>
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -31,10 +30,15 @@ const std::array g_device_extensions{
 
 Device::Device(RenderingDriver& instance, PhysicalDevice& physical_device)
     : instance_(instance), physical_device_(physical_device), graphics_queue_(*this), compute_queue_(*this),
-      transfer_queue_(*this), present_queue_(*this) {}
+      transfer_queue_(*this), present_queue_(*this) {
+    for (unsigned n = 0; n < TRANSFER_KIT_COUNT; ++n) { transfer_kits_.emplace_back(*this); }
+}
 
 Device::~Device() {
     ObjectDestroyer<VkDescriptorPool>::destroy(device_, descriptor_pool_);
+    for (auto& kit : transfer_kits_) { ObjectDestroyer<VkFence>::destroy(device_, kit.fence); }
+    transfer_kits_.clear();
+    vmaDestroyAllocator(vma_allocator_);
     ObjectDestroyer<VkDevice>::destroy(device_);
 }
 
@@ -165,14 +169,37 @@ bool Device::create(const uxs::db::value& caps) {
 
 #include "vulkan_function_list.inl"
 
+    const VmaVulkanFunctions vulkan_functions{
+        .vkGetInstanceProcAddr = vkGetInstanceProcAddr,
+        .vkGetDeviceProcAddr = vkGetDeviceProcAddr,
+    };
+
+    const VmaAllocatorCreateInfo allocator_create_info{
+        .flags = VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT,
+        .physicalDevice = ~physical_device_,
+        .device = device_,
+        .pVulkanFunctions = &vulkan_functions,
+        .instance = ~instance_,
+        .vulkanApiVersion = VK_API_VERSION_1_2,
+    };
+
+    result = vmaCreateAllocator(&allocator_create_info, &vma_allocator_);
+    if (result != VK_SUCCESS || vma_allocator_ == VK_NULL_HANDLE) {
+        logError(LOG_VK "couldn't create VMA allocator: {}", result);
+        return false;
+    }
+
     if (!graphics_queue_.create()) { return false; }
     if (!compute_queue_.create()) { return false; }
     if (!transfer_queue_.create()) { return false; }
     if (!present_queue_.create()) { return false; }
 
-    VkCommandBuffer command_buffer = VK_NULL_HANDLE;
-    if (!transfer_queue_.obtainCommandBuffer(command_buffer)) { return false; }
-    transfer_command_buffer_ = CommandBuffer::wrap(command_buffer);
+    for (auto& kit : transfer_kits_) {
+        VkCommandBuffer command_buffer = VK_NULL_HANDLE;
+        if (!transfer_queue_.obtainCommandBuffer(command_buffer)) { return false; }
+        kit.command_buffer = CommandBuffer::wrap(command_buffer);
+        if (!createFence(true, kit.fence)) { return false; }
+    }
 
     if (!createDescriptorPool(false, 8,
                               std::array{
@@ -282,129 +309,132 @@ void Device::releaseDescriptorSet(VkDescriptorSet descriptor_set) {
     vkFreeDescriptorSets(device_, descriptor_pool_, 1, &descriptor_set);
 }
 
-bool Device::writeBufferInDeviceLocalMemory(VkDeviceSize data_size, const void* data, VkBuffer dst,
-                                            VkDeviceSize dst_offset, VkAccessFlags dst_current_access,
-                                            VkAccessFlags dst_new_access, VkPipelineStageFlags dst_generating_stages,
-                                            VkPipelineStageFlags dst_consuming_stages,
-                                            std::span<const VkSemaphore> signal_semaphores) {
-    Buffer staging_buffer(*this);
-    if (!staging_buffer.create(data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) {
+bool Device::updateBuffer(const void* data, VkDeviceSize data_size, VkBuffer dst, VkDeviceSize dst_offset,
+                          VkAccessFlags dst_current_access, VkAccessFlags dst_new_access,
+                          VkPipelineStageFlags dst_generating_stages, VkPipelineStageFlags dst_consuming_stages,
+                          std::span<const VkSemaphore> signal_semaphores) {
+    auto& kit = transfer_kits_[current_transfer_kit_++];
+    if (current_transfer_kit_ == TRANSFER_KIT_COUNT) { current_transfer_kit_ = 0; }
+
+    if (!waitForFences(std::array{kit.fence}, VK_FALSE, 500000000)) { return false; }
+
+    if (kit.staging_buffer.getSize() < data_size) {
+        if (!kit.staging_buffer.create(data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, true)) { return false; }
+    }
+
+    VkResult result = vmaCopyMemoryToAllocation(vma_allocator_, data, kit.staging_buffer.getAllocation(), 0, data_size);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't copy to host visible memory: {}", result);
         return false;
     }
 
-    if (!writeToHostVisibleMemory(staging_buffer.getMemoryObject(), 0, data_size, data)) { return false; }
+    if (!kit.command_buffer.beginCommandBuffer(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) { return false; }
 
-    if (!transfer_command_buffer_.beginCommandBuffer(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) {
+    kit.command_buffer.setBufferMemoryBarrier(dst_generating_stages, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                              std::array{
+                                                  Wrapper<VkBufferMemoryBarrier>::unwrap({
+                                                      .buffer = dst,
+                                                      .current_access = dst_current_access,
+                                                      .new_access = VK_ACCESS_TRANSFER_WRITE_BIT,
+                                                      .current_queue_family = VK_QUEUE_FAMILY_IGNORED,
+                                                      .new_queue_family = transfer_queue_.getFamilyIndex(),
+                                                  }),
+                                              });
+
+    kit.command_buffer.copyBuffer(~kit.staging_buffer, dst,
+                                  std::array{
+                                      VkBufferCopy{.dstOffset = dst_offset, .size = data_size},
+                                  });
+
+    kit.command_buffer.setBufferMemoryBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, dst_consuming_stages,
+                                              std::array{
+                                                  Wrapper<VkBufferMemoryBarrier>::unwrap({
+                                                      .buffer = dst,
+                                                      .current_access = VK_ACCESS_TRANSFER_WRITE_BIT,
+                                                      .new_access = dst_new_access,
+                                                      .current_queue_family = transfer_queue_.getFamilyIndex(),
+                                                      .new_queue_family = graphics_queue_.getFamilyIndex(),
+                                                  }),
+                                              });
+
+    if (!kit.command_buffer.endCommandBuffer()) { return false; }
+
+    if (!resetFences(std::array{kit.fence})) { return false; }
+
+    if (!transfer_queue_.submitCommandBuffers({}, std::array{~kit.command_buffer}, signal_semaphores, kit.fence)) {
         return false;
     }
-
-    transfer_command_buffer_.setBufferMemoryBarrier(dst_generating_stages, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                                    std::array{
-                                                        Wrapper<VkBufferMemoryBarrier>::unwrap({
-                                                            .buffer = dst,
-                                                            .current_access = dst_current_access,
-                                                            .new_access = VK_ACCESS_TRANSFER_WRITE_BIT,
-                                                            .current_queue_family = VK_QUEUE_FAMILY_IGNORED,
-                                                            .new_queue_family = VK_QUEUE_FAMILY_IGNORED,
-                                                        }),
-                                                    });
-
-    transfer_command_buffer_.copyBuffer(~staging_buffer, dst,
-                                        std::array{
-                                            VkBufferCopy{.dstOffset = dst_offset, .size = data_size},
-                                        });
-
-    transfer_command_buffer_.setBufferMemoryBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, dst_consuming_stages,
-                                                    std::array{
-                                                        Wrapper<VkBufferMemoryBarrier>::unwrap({
-                                                            .buffer = dst,
-                                                            .current_access = VK_ACCESS_TRANSFER_WRITE_BIT,
-                                                            .new_access = dst_new_access,
-                                                            .current_queue_family = VK_QUEUE_FAMILY_IGNORED,
-                                                            .new_queue_family = VK_QUEUE_FAMILY_IGNORED,
-                                                        }),
-                                                    });
-
-    if (!transfer_command_buffer_.endCommandBuffer()) { return false; }
-
-    ObjectDestroyer<VkFence> fence(device_);
-    if (!createFence(false, ~fence)) { return false; }
-
-    if (!transfer_queue_.submitCommandBuffers({}, std::array{~transfer_command_buffer_}, signal_semaphores, ~fence)) {
-        return false;
-    }
-
-    if (!waitForFences(std::array{~fence}, VK_FALSE, 500000000)) { return false; }
 
     return true;
 }
 
-bool Device::writeImageInDeviceLocalMemory(VkDeviceSize data_size, const void* data, VkImage dst,
-                                           VkImageSubresourceLayers dst_subresource, VkOffset3D dst_offset,
-                                           VkExtent3D dst_extent, VkImageLayout dst_current_layout,
-                                           VkImageLayout dst_new_layout, VkAccessFlags dst_current_access,
-                                           VkAccessFlags dst_new_access, VkImageAspectFlags dst_aspect,
-                                           VkPipelineStageFlags dst_generating_stages,
-                                           VkPipelineStageFlags dst_consuming_stages,
-                                           std::span<const VkSemaphore> signal_semaphores) {
-    Buffer staging_buffer(*this);
-    if (!staging_buffer.create(data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) {
+bool Device::updateImage(const void* data, VkDeviceSize data_size, VkImage dst,
+                         VkImageSubresourceLayers dst_subresource, VkOffset3D dst_offset, VkExtent3D dst_extent,
+                         VkImageLayout dst_current_layout, VkImageLayout dst_new_layout,
+                         VkAccessFlags dst_current_access, VkAccessFlags dst_new_access, VkImageAspectFlags dst_aspect,
+                         VkPipelineStageFlags dst_generating_stages, VkPipelineStageFlags dst_consuming_stages,
+                         std::span<const VkSemaphore> signal_semaphores) {
+    auto& kit = transfer_kits_[current_transfer_kit_++];
+    if (current_transfer_kit_ == TRANSFER_KIT_COUNT) { current_transfer_kit_ = 0; }
+
+    if (!waitForFences(std::array{kit.fence}, VK_FALSE, 500000000)) { return false; }
+
+    if (kit.staging_buffer.getSize() < data_size) {
+        if (!kit.staging_buffer.create(data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, true)) { return false; }
+    }
+
+    VkResult result = vmaCopyMemoryToAllocation(vma_allocator_, data, kit.staging_buffer.getAllocation(), 0, data_size);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't copy to host visible memory: {}", result);
         return false;
     }
 
-    if (!writeToHostVisibleMemory(staging_buffer.getMemoryObject(), 0, data_size, data)) { return false; }
+    if (!kit.command_buffer.beginCommandBuffer(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) { return false; }
 
-    if (!transfer_command_buffer_.beginCommandBuffer(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) {
+    kit.command_buffer.setImageMemoryBarrier(dst_generating_stages, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                             std::array{
+                                                 Wrapper<VkImageMemoryBarrier>::unwrap({
+                                                     .image = dst,
+                                                     .current_access = dst_current_access,
+                                                     .new_access = VK_ACCESS_TRANSFER_WRITE_BIT,
+                                                     .current_layout = dst_current_layout,
+                                                     .new_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                                     .current_queue_family = VK_QUEUE_FAMILY_IGNORED,
+                                                     .new_queue_family = transfer_queue_.getFamilyIndex(),
+                                                     .aspect = dst_aspect,
+                                                 }),
+                                             });
+
+    kit.command_buffer.copyBufferToImage(~kit.staging_buffer, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                         std::array{
+                                             VkBufferImageCopy{
+                                                 .imageSubresource = dst_subresource,
+                                                 .imageOffset = dst_offset,
+                                                 .imageExtent = dst_extent,
+                                             },
+                                         });
+
+    kit.command_buffer.setImageMemoryBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, dst_consuming_stages,
+                                             std::array{
+                                                 Wrapper<VkImageMemoryBarrier>::unwrap({
+                                                     .image = dst,
+                                                     .current_access = VK_ACCESS_TRANSFER_WRITE_BIT,
+                                                     .new_access = dst_new_access,
+                                                     .current_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                                     .new_layout = dst_new_layout,
+                                                     .current_queue_family = transfer_queue_.getFamilyIndex(),
+                                                     .new_queue_family = graphics_queue_.getFamilyIndex(),
+                                                     .aspect = dst_aspect,
+                                                 }),
+                                             });
+
+    if (!kit.command_buffer.endCommandBuffer()) { return false; }
+
+    if (!resetFences(std::array{kit.fence})) { return false; }
+
+    if (!transfer_queue_.submitCommandBuffers({}, std::array{~kit.command_buffer}, signal_semaphores, kit.fence)) {
         return false;
     }
-
-    transfer_command_buffer_.setImageMemoryBarrier(dst_generating_stages, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                                   std::array{
-                                                       Wrapper<VkImageMemoryBarrier>::unwrap({
-                                                           .image = dst,
-                                                           .current_access = dst_current_access,
-                                                           .new_access = VK_ACCESS_TRANSFER_WRITE_BIT,
-                                                           .current_layout = dst_current_layout,
-                                                           .new_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                                           .current_queue_family = VK_QUEUE_FAMILY_IGNORED,
-                                                           .new_queue_family = VK_QUEUE_FAMILY_IGNORED,
-                                                           .aspect = dst_aspect,
-                                                       }),
-                                                   });
-
-    transfer_command_buffer_.copyBufferToImage(~staging_buffer, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                               std::array{
-                                                   VkBufferImageCopy{
-                                                       .imageSubresource = dst_subresource,
-                                                       .imageOffset = dst_offset,
-                                                       .imageExtent = dst_extent,
-                                                   },
-                                               });
-
-    transfer_command_buffer_.setImageMemoryBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, dst_consuming_stages,
-                                                   std::array{
-                                                       Wrapper<VkImageMemoryBarrier>::unwrap({
-                                                           .image = dst,
-                                                           .current_access = VK_ACCESS_TRANSFER_WRITE_BIT,
-                                                           .new_access = dst_new_access,
-                                                           .current_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                                           .new_layout = dst_new_layout,
-                                                           .current_queue_family = VK_QUEUE_FAMILY_IGNORED,
-                                                           .new_queue_family = VK_QUEUE_FAMILY_IGNORED,
-                                                           .aspect = dst_aspect,
-                                                       }),
-                                                   });
-
-    if (!transfer_command_buffer_.endCommandBuffer()) { return false; }
-
-    ObjectDestroyer<VkFence> fence(device_);
-    if (!createFence(false, ~fence)) { return false; }
-
-    if (!transfer_queue_.submitCommandBuffers({}, std::array{~transfer_command_buffer_}, signal_semaphores, ~fence)) {
-        return false;
-    }
-
-    if (!waitForFences(std::array{~fence}, VK_FALSE, 500000000)) { return false; }
 
     return true;
 }
@@ -426,10 +456,7 @@ IPipeline* Device::createPipeline(IRenderTarget& render_target, std::span<IShade
 
 IBuffer* Device::createBuffer(std::size_t size) {
     auto buffer = std::make_unique<Buffer>(*this);
-    if (!buffer->create(size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
-        return nullptr;
-    }
+    if (!buffer->create(size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT)) { return nullptr; }
     return buffers_.emplace_back(std::move(buffer)).get();
 }
 
@@ -476,38 +503,6 @@ bool Device::createDescriptorPool(bool free_individual_sets, std::uint32_t max_s
     VkResult result = vkCreateDescriptorPool(device_, &create_info, nullptr, &descriptor_pool);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create descriptor pool: {}", result);
-        return false;
-    }
-
-    return true;
-}
-
-bool MappedMemory::map(VkDeviceSize offset, VkDeviceSize data_size) {
-    VkResult result = vkMapMemory(device_, memory_object_, offset, data_size, 0, &ptr_);
-    if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't map memory object: {}", result);
-        return false;
-    }
-    return true;
-}
-
-bool Device::writeToHostVisibleMemory(VkDeviceMemory memory_object, VkDeviceSize offset, VkDeviceSize data_size,
-                                      const void* data) {
-    MappedMemory mapped_memory(device_, memory_object);
-    if (!mapped_memory.map(offset, data_size)) { return false; }
-
-    std::memcpy(mapped_memory.ptr(), data, std::size_t(data_size));
-
-    const std::array memory_ranges{VkMappedMemoryRange{
-        .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
-        .memory = memory_object,
-        .offset = offset,
-        .size = VK_WHOLE_SIZE,
-    }};
-
-    VkResult result = vkFlushMappedMemoryRanges(device_, std::uint32_t(memory_ranges.size()), memory_ranges.data());
-    if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't flush mapped memory: {}", result);
         return false;
     }
 

@@ -219,7 +219,7 @@ bool RenderingDriver::loadPhysicalDeviceList() {
         return false;
     }
 
-    std::vector<VkPhysicalDevice> physical_device_list(physical_device_count);
+    uxs::inline_dynarray<VkPhysicalDevice> physical_device_list(physical_device_count);
     result = vkEnumeratePhysicalDevices(instance_, &physical_device_count, physical_device_list.data());
     if (result != VK_SUCCESS || physical_device_count == 0) {
         logError(LOG_VK "couldn't enumerate physical devices: {}", result);

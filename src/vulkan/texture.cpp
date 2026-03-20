@@ -16,8 +16,7 @@ Texture::Texture(Device& device) : device_(device) {}
 
 Texture::~Texture() {
     ObjectDestroyer<VkImageView>::destroy(~device_, image_view_);
-    ObjectDestroyer<VkDeviceMemory>::destroy(~device_, memory_object_);
-    ObjectDestroyer<VkImage>::destroy(~device_, image_);
+    vmaDestroyImage(device_.getAllocator(), image_, allocation_);
 }
 
 bool Texture::create(VkImageType type, VkFormat format, VkExtent3D size, std::uint32_t num_mipmaps,
@@ -50,13 +49,13 @@ bool Texture::create(VkImageType type, VkFormat format, VkExtent3D size, std::ui
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
 
-    VkResult result = vkCreateImage(~device_, &create_info, nullptr, &image_);
+    const VmaAllocationCreateInfo alloc_info{.usage = VMA_MEMORY_USAGE_AUTO};
+
+    VkResult result = vmaCreateImage(device_.getAllocator(), &create_info, &alloc_info, &image_, &allocation_, nullptr);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create image: {}", result);
         return false;
     }
-
-    if (!allocateAndBindMemoryObjectToImage(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) { return false; }
 
     if (!createImageView(view_type, format, VK_IMAGE_ASPECT_COLOR_BIT)) { return false; }
 
@@ -66,18 +65,18 @@ bool Texture::create(VkImageType type, VkFormat format, VkExtent3D size, std::ui
 //@{ ITexture
 
 bool Texture::updateTexture(std::span<const std::uint8_t> data, Vec3i offset, Extent3u extent) {
-    return device_.writeImageInDeviceLocalMemory(
-        VkDeviceSize(data.size()), data.data(), image_,
-        {
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .mipLevel = 0,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        },
-        {.x = offset.x, .y = offset.y, .z = offset.z},
-        {.width = extent.width, .height = extent.height, .depth = extent.depth}, VK_IMAGE_LAYOUT_UNDEFINED,
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_ASPECT_COLOR_BIT,
-        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, {});
+    return device_.updateImage(data.data(), VkDeviceSize(data.size()), image_,
+                               {
+                                   .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                                   .mipLevel = 0,
+                                   .baseArrayLayer = 0,
+                                   .layerCount = 1,
+                               },
+                               {.x = offset.x, .y = offset.y, .z = offset.z},
+                               {.width = extent.width, .height = extent.height, .depth = extent.depth},
+                               VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_NONE,
+                               VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, {});
 }
 
 //@}
@@ -108,40 +107,6 @@ bool Texture::createImageView(VkImageViewType view_type, VkFormat format, VkImag
     VkResult result = vkCreateImageView(~device_, &create_info, nullptr, &image_view_);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create image view: {}", result);
-        return false;
-    }
-
-    return true;
-}
-
-bool Texture::allocateAndBindMemoryObjectToImage(VkMemoryPropertyFlagBits desired_properties) {
-    VkMemoryRequirements memory_requirements;
-    vkGetImageMemoryRequirements(~device_, image_, &memory_requirements);
-
-    const auto& memory_properties = device_.getPhysicalDevice().getMemoryProperties();
-
-    for (std::uint32_t type = 0; type < memory_properties.memoryTypeCount; ++type) {
-        if ((memory_requirements.memoryTypeBits & (1U << type)) &&
-            (memory_properties.memoryTypes[type].propertyFlags & desired_properties) == desired_properties) {
-            const VkMemoryAllocateInfo allocate_info{
-                .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-                .allocationSize = memory_requirements.size,
-                .memoryTypeIndex = type,
-            };
-
-            VkResult result = vkAllocateMemory(~device_, &allocate_info, nullptr, &memory_object_);
-            if (result == VK_SUCCESS) { break; }
-        }
-    }
-
-    if (memory_object_ == VK_NULL_HANDLE) {
-        logError(LOG_VK "couldn't allocate memory for image");
-        return false;
-    }
-
-    VkResult result = vkBindImageMemory(~device_, image_, memory_object_, 0);
-    if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't bind memory object to image: {}", result);
         return false;
     }
 
