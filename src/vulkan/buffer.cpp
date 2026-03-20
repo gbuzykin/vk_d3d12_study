@@ -3,8 +3,7 @@
 #include "device.h"
 #include "object_destroyer.h"
 #include "rendering_driver.h"
-
-#include "common/logger.h"
+#include "vulkan_logger.h"
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -30,7 +29,7 @@ bool Buffer::create(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropert
 
     VkResult result = vkCreateBuffer(~device_, &create_info, nullptr, &buffer_);
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't create a buffer");
+        logError(LOG_VK "couldn't create buffer: {}", result);
         return false;
     }
 
@@ -70,13 +69,13 @@ bool Buffer::allocateAndBindMemoryObjectToBuffer(VkMemoryPropertyFlagBits desire
     }
 
     if (memory_object_ == VK_NULL_HANDLE) {
-        logError(LOG_VK "couldn't allocate memory for a buffer");
+        logError(LOG_VK "couldn't allocate memory for buffer");
         return false;
     }
 
     VkResult result = vkBindBufferMemory(~device_, buffer_, memory_object_, 0);
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't bind memory object to a buffer");
+        logError(LOG_VK "couldn't bind memory object to buffer: {}", result);
         return false;
     }
 

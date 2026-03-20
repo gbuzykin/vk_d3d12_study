@@ -4,8 +4,7 @@
 #include "object_destroyer.h"
 #include "render_target.h"
 #include "surface.h"
-
-#include "common/logger.h"
+#include "vulkan_logger.h"
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -133,7 +132,7 @@ bool SwapChain::create(const uxs::db::value& opts) {
     const VkSwapchainKHR old_swap_chain = swap_chain_;
     VkResult result = vkCreateSwapchainKHR(~device_, &create_info, nullptr, &swap_chain_);
     if (result != VK_SUCCESS || swap_chain_ == VK_NULL_HANDLE) {
-        logError(LOG_VK "couldn't create a swap chain");
+        logError(LOG_VK "couldn't create swap chain: {}", result);
         return false;
     }
 
@@ -176,14 +175,14 @@ bool SwapChain::loadImageHandles() {
     std::uint32_t image_count = 0;
     VkResult result = vkGetSwapchainImagesKHR(~device_, swap_chain_, &image_count, nullptr);
     if (result != VK_SUCCESS || image_count == 0) {
-        logError(LOG_VK "couldn't get the number of swap chain images");
+        logError(LOG_VK "couldn't get the number of swap chain images: {}", result);
         return false;
     }
 
     images_.resize(image_count, VK_NULL_HANDLE);
     result = vkGetSwapchainImagesKHR(~device_, swap_chain_, &image_count, images_.data());
     if (result != VK_SUCCESS || image_count == 0) {
-        logError(LOG_VK "couldn't enumerate swap_chain images");
+        logError(LOG_VK "couldn't enumerate swap_chain images: {}", result);
         return false;
     }
 

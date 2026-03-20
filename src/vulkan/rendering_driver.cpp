@@ -3,9 +3,9 @@
 #include "device.h"
 #include "object_destroyer.h"
 #include "surface.h"
+#include "vulkan_logger.h"
 
 #include "common/dynamic_library.h"
-#include "common/logger.h"
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -107,14 +107,14 @@ bool RenderingDriver::loadExtensionProperties() {
     std::uint32_t extension_count = 0;
     VkResult result = vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, nullptr);
     if (result != VK_SUCCESS || extension_count == 0) {
-        logError(LOG_VK "couldn't get the number of instance extensions");
+        logError(LOG_VK "couldn't get the number of instance extensions: {}", result);
         return false;
     }
 
     extensions_.resize(extension_count);
     result = vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, extensions_.data());
     if (result != VK_SUCCESS || extension_count == 0) {
-        logError(LOG_VK "couldn't enumerate Instance extensions");
+        logError(LOG_VK "couldn't enumerate Instance extensions: {}", result);
         return false;
     }
 
@@ -168,7 +168,7 @@ bool RenderingDriver::createInstance(const uxs::db::value& app_info) {
 
     VkResult result = vkCreateInstance(&create_info, nullptr, &instance_);
     if (result != VK_SUCCESS || instance_ == VK_NULL_HANDLE) {
-        logError(LOG_VK "couldn't create Vulkan Instance");
+        logError(LOG_VK "couldn't create Vulkan Instance: {}", result);
         return false;
     }
 
@@ -206,14 +206,14 @@ bool RenderingDriver::loadPhysicalDeviceList() {
     std::uint32_t physical_device_count = 0;
     VkResult result = vkEnumeratePhysicalDevices(instance_, &physical_device_count, nullptr);
     if (result != VK_SUCCESS || physical_device_count == 0) {
-        logError(LOG_VK "couldn't get the number of available physical devices");
+        logError(LOG_VK "couldn't get the number of available physical devices: {}", result);
         return false;
     }
 
     std::vector<VkPhysicalDevice> physical_device_list(physical_device_count);
     result = vkEnumeratePhysicalDevices(instance_, &physical_device_count, physical_device_list.data());
     if (result != VK_SUCCESS || physical_device_count == 0) {
-        logError(LOG_VK "couldn't enumerate physical devices");
+        logError(LOG_VK "couldn't enumerate physical devices: {}", result);
         return false;
     }
 
@@ -260,14 +260,14 @@ bool PhysicalDevice::loadExtensionProperties() {
     std::uint32_t extension_count = 0;
     VkResult result = vkEnumerateDeviceExtensionProperties(physical_device_, nullptr, &extension_count, nullptr);
     if (result != VK_SUCCESS || extension_count == 0) {
-        logError(LOG_VK "couldn't get the number of device extensions");
+        logError(LOG_VK "couldn't get the number of device extensions: {}", result);
         return false;
     }
 
     extensions_.resize(extension_count);
     result = vkEnumerateDeviceExtensionProperties(physical_device_, nullptr, &extension_count, extensions_.data());
     if (result != VK_SUCCESS || extension_count == 0) {
-        logError(LOG_VK "couldn't enumerate device extensions");
+        logError(LOG_VK "couldn't enumerate device extensions: {}", result);
         return false;
     }
 

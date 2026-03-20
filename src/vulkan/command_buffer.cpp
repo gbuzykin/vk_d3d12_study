@@ -1,6 +1,6 @@
 #include "command_buffer.h"
 
-#include "common/logger.h"
+#include "vulkan_logger.h"
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -19,7 +19,7 @@ bool CommandBuffer::beginCommandBuffer(VkCommandBufferUsageFlags usage,
 
     VkResult result = vkBeginCommandBuffer(command_buffer_, &begin_info);
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't begin command buffer recording operation");
+        logError(LOG_VK "couldn't begin command buffer recording operation: {}", result);
         return false;
     }
 
@@ -28,8 +28,8 @@ bool CommandBuffer::beginCommandBuffer(VkCommandBufferUsageFlags usage,
 
 bool CommandBuffer::endCommandBuffer() {
     VkResult result = vkEndCommandBuffer(command_buffer_);
-    if (VK_SUCCESS != result) {
-        logError(LOG_VK "error occurred during command buffer recording");
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "error occurred during command buffer recording: {}", result);
         return false;
     }
     return true;

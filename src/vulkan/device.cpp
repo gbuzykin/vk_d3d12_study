@@ -11,9 +11,8 @@
 #include "surface.h"
 #include "swap_chain.h"
 #include "texture.h"
+#include "vulkan_logger.h"
 #include "wrappers.h"
-
-#include "common/logger.h"
 
 #include <array>
 
@@ -156,7 +155,7 @@ bool Device::create(const uxs::db::value& caps) {
 
     VkResult result = vkCreateDevice(~physical_device_, &create_info, nullptr, &device_);
     if (result != VK_SUCCESS || device_ == VK_NULL_HANDLE) {
-        logError(LOG_VK "couldn't create logical device");
+        logError(LOG_VK "couldn't create logical device: {}", result);
         return false;
     }
 
@@ -236,7 +235,7 @@ void Device::finalize() {
 bool Device::waitDevice() {
     VkResult result = vkDeviceWaitIdle(device_);
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "waiting for device failed");
+        logError(LOG_VK "waiting for device failed: {}", result);
         return false;
     }
     return true;
@@ -246,7 +245,7 @@ bool Device::createSemaphore(VkSemaphore& semaphore) {
     const VkSemaphoreCreateInfo create_info{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
     VkResult result = vkCreateSemaphore(device_, &create_info, nullptr, &semaphore);
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't create a semaphore");
+        logError(LOG_VK "couldn't create semaphore: {}", result);
         return false;
     }
     return true;
@@ -260,7 +259,7 @@ bool Device::createFence(bool signaled, VkFence& fence) {
 
     VkResult result = vkCreateFence(device_, &create_info, nullptr, &fence);
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't create a fence");
+        logError(LOG_VK "couldn't create fence: {}", result);
         return false;
     }
     return true;
@@ -269,7 +268,7 @@ bool Device::createFence(bool signaled, VkFence& fence) {
 bool Device::waitForFences(std::span<const VkFence> fences, VkBool32 wait_for_all, std::uint64_t timeout) {
     VkResult result = vkWaitForFences(device_, std::uint32_t(fences.size()), fences.data(), wait_for_all, timeout);
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "waiting for fence failed");
+        logError(LOG_VK "waiting for fences failed: {}", result);
         return false;
     }
     return true;
@@ -278,7 +277,7 @@ bool Device::waitForFences(std::span<const VkFence> fences, VkBool32 wait_for_al
 bool Device::resetFences(std::span<const VkFence> fences) {
     VkResult result = vkResetFences(device_, std::uint32_t(fences.size()), fences.data());
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "error occurred when tried to reset fences");
+        logError(LOG_VK "error occurred when tried to reset fences: {}", result);
         return false;
     }
     return true;
@@ -294,7 +293,7 @@ bool Device::obtainDescriptorSet(VkDescriptorSetLayout descriptor_set_layout, Vk
 
     VkResult result = vkAllocateDescriptorSets(device_, &allocate_info, &descriptor_set);
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't allocate descriptor sets");
+        logError(LOG_VK "couldn't allocate descriptor sets: {}", result);
         return false;
     }
 
@@ -502,7 +501,7 @@ bool Device::createDescriptorPool(std::uint32_t max_sets_count, std::span<const 
 
     VkResult result = vkCreateDescriptorPool(device_, &create_info, nullptr, &descriptor_pool);
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't create a descriptor pool");
+        logError(LOG_VK "couldn't create descriptor pool: {}", result);
         return false;
     }
 
@@ -512,7 +511,7 @@ bool Device::createDescriptorPool(std::uint32_t max_sets_count, std::span<const 
 bool MappedMemory::map(VkDeviceSize offset, VkDeviceSize data_size) {
     VkResult result = vkMapMemory(device_, memory_object_, offset, data_size, 0, &ptr_);
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't map memory object");
+        logError(LOG_VK "couldn't map memory object: {}", result);
         return false;
     }
     return true;
@@ -538,7 +537,7 @@ bool Device::writeToHostVisibleMemory(VkDeviceMemory memory_object, VkDeviceSize
 
     VkResult result = vkFlushMappedMemoryRanges(device_, std::uint32_t(memory_ranges.size()), memory_ranges.data());
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't flush mapped memory");
+        logError(LOG_VK "couldn't flush mapped memory: {}", result);
         return false;
     }
 

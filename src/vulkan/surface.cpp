@@ -4,8 +4,7 @@
 #include "object_destroyer.h"
 #include "rendering_driver.h"
 #include "swap_chain.h"
-
-#include "common/logger.h"
+#include "vulkan_logger.h"
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -105,7 +104,7 @@ bool Surface::create(const WindowDescriptor& win_desc) {
     }
 
     if (result != VK_SUCCESS || surface_ == VK_NULL_HANDLE) {
-        logError(LOG_VK "couldn't create surface");
+        logError(LOG_VK "couldn't create surface: {}", result);
         return false;
     }
 
@@ -115,7 +114,7 @@ bool Surface::create(const WindowDescriptor& win_desc) {
 bool Surface::loadCapabilities(PhysicalDevice& physical_device) {
     VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(~physical_device, surface_, &capabilities_);
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't get the capabilities of a surface");
+        logError(LOG_VK "couldn't get surface capabilities: {}", result);
         return false;
     }
 
@@ -126,14 +125,14 @@ bool Surface::loadFormats(PhysicalDevice& physical_device) {
     std::uint32_t formats_count = 0;
     VkResult result = vkGetPhysicalDeviceSurfaceFormatsKHR(~physical_device, surface_, &formats_count, nullptr);
     if (result != VK_SUCCESS || formats_count == 0) {
-        logError(LOG_VK "couldn't get the number of supported surface formats");
+        logError(LOG_VK "couldn't get the number of supported surface formats: {}", result);
         return false;
     }
 
     formats_.resize(formats_count);
     result = vkGetPhysicalDeviceSurfaceFormatsKHR(~physical_device, surface_, &formats_count, formats_.data());
     if (result != VK_SUCCESS || formats_count == 0) {
-        logError(LOG_VK "couldn't enumerate supported surface formats");
+        logError(LOG_VK "couldn't enumerate supported surface formats: {}", result);
         return false;
     }
 
@@ -164,7 +163,7 @@ bool Surface::loadPresentModes(PhysicalDevice& physical_device) {
     VkResult result = vkGetPhysicalDeviceSurfacePresentModesKHR(~physical_device, surface_, &present_mode_count,
                                                                 nullptr);
     if (result != VK_SUCCESS || present_mode_count == 0) {
-        logError(LOG_VK "couldn't get the number of supported present modes");
+        logError(LOG_VK "couldn't get the number of supported present modes: {}", result);
         return false;
     }
 
@@ -172,7 +171,7 @@ bool Surface::loadPresentModes(PhysicalDevice& physical_device) {
     result = vkGetPhysicalDeviceSurfacePresentModesKHR(~physical_device, surface_, &present_mode_count,
                                                        present_modes_.data());
     if (result != VK_SUCCESS || present_mode_count == 0) {
-        logError(LOG_VK "couldn't enumerate present modes");
+        logError(LOG_VK "couldn't enumerate present modes: {}", result);
         return false;
     }
 
