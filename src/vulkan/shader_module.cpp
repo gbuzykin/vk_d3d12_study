@@ -2,8 +2,7 @@
 
 #include "device.h"
 #include "object_destroyer.h"
-
-#include "common/logger.h"
+#include "vulkan_logger.h"
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -25,7 +24,7 @@ bool ShaderModule::create(std::span<const std::uint32_t> source) {
 
     VkResult result = vkCreateShaderModule(~device_, &create_info, nullptr, &shader_module_);
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't create a shader module");
+        logError(LOG_VK "couldn't create shader module: {}", result);
         return false;
     }
 

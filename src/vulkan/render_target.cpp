@@ -7,9 +7,8 @@
 #include "pipeline.h"
 #include "surface.h"
 #include "swap_chain.h"
+#include "vulkan_logger.h"
 #include "wrappers.h"
-
-#include "common/logger.h"
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -100,7 +99,7 @@ bool RenderTarget::create(const uxs::db::value& opts) {
 
     VkResult result = vkCreateRenderPass(~device_, &create_info, nullptr, &render_pass_);
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't create a render pass");
+        logError(LOG_VK "couldn't create render pass: {}", result);
         return false;
     }
 
@@ -132,7 +131,7 @@ bool RenderTarget::createImageViews() {
 
         VkResult result = vkCreateImageView(~device_, &image_view_create_info, nullptr, &image_views_[n].image_view);
         if (result != VK_SUCCESS) {
-            logError(LOG_VK "couldn't create image view for a swap chain image");
+            logError(LOG_VK "couldn't create image view for swap chain image: {}", result);
             return false;
         }
 
@@ -151,7 +150,7 @@ bool RenderTarget::createImageViews() {
 
         result = vkCreateFramebuffer(~device_, &framebuffer_create_info, nullptr, &image_views_[n].framebuffer);
         if (result != VK_SUCCESS) {
-            logError(LOG_VK "couldn't create a framebuffer");
+            logError(LOG_VK "couldn't create framebuffer: {}", result);
             return false;
         }
     }

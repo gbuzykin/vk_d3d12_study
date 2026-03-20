@@ -2,8 +2,7 @@
 
 #include "device.h"
 #include "object_destroyer.h"
-
-#include "common/logger.h"
+#include "vulkan_logger.h"
 
 #include <algorithm>
 
@@ -20,7 +19,7 @@ DevQueue::~DevQueue() { destroy(); }
 
 bool DevQueue::create() {
     if (family_index_ == INVALID_UINT32_VALUE) {
-        logError(LOG_VK "not selected queue family");
+        logError(LOG_VK "no selected queue family");
         return false;
     }
 
@@ -34,7 +33,7 @@ bool DevQueue::create() {
 
     VkResult result = vkCreateCommandPool(~device_, &create_info, nullptr, &command_pool_);
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't create command pool");
+        logError(LOG_VK "couldn't create command pool: {}", result);
         return false;
     }
 
@@ -64,7 +63,7 @@ bool DevQueue::submitCommandBuffers(util::multispan<const VkSemaphore, const VkP
 
     VkResult result = vkQueueSubmit(queue_, 1, &submit_info, fence);
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "error occurred during command buffer submission");
+        logError(LOG_VK "error occurred during command buffer submission: {}", result);
         return false;
     }
 
@@ -103,7 +102,7 @@ bool DevQueue::obtainCommandBuffer(VkCommandBuffer& command_buffer) {
         VkResult result = vkAllocateCommandBuffers(~device_, &allocate_info,
                                                    allocated_command_buffers_.data() + used_command_buffer_count_);
         if (result != VK_SUCCESS) {
-            logError(LOG_VK "couldn't allocate command buffers");
+            logError(LOG_VK "couldn't allocate command buffers: {}", result);
             return false;
         }
     }

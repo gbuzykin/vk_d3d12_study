@@ -2,8 +2,7 @@
 
 #include "device.h"
 #include "object_destroyer.h"
-
-#include "common/logger.h"
+#include "vulkan_logger.h"
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -42,7 +41,7 @@ bool Sampler::create(VkFilter mag_filter, VkFilter min_filter, VkSamplerMipmapMo
 
     VkResult result = vkCreateSampler(~device_, &create_info, nullptr, &sampler_);
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't create sampler");
+        logError(LOG_VK "couldn't create sampler: {}", result);
         return false;
     }
 
