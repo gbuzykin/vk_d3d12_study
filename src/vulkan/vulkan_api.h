@@ -11,8 +11,6 @@
 #    undef max
 #endif
 
-#define LOG_VK "vulkan: "
-
 namespace app3d::rel::vulkan {
 #define EXPORTED_VK_FUNCTION(name)                                 extern PFN_##name name
 #define GLOBAL_LEVEL_VK_FUNCTION(name)                             extern PFN_##name name

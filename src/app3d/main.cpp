@@ -32,7 +32,7 @@ bool loadImageFromFile(const char* filename, Image& image, std::uint32_t num_req
         stbi_load(filename, &width, &height, &num_components, num_requested_components), stbi_image_free);
 
     if (!stbi_data || width <= 0 || height <= 0 || num_components <= 0) {
-        logError("error loading image `{}`", filename);
+        logError("error loading image '{}'", filename);
         return false;
     }
 
