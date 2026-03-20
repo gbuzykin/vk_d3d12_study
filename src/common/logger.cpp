@@ -3,6 +3,7 @@
 #include <uxs/format_chrono.h>
 #include <uxs/io/iobuf.h>
 
+#include <chrono>
 #include <ctime>
 #include <mutex>
 

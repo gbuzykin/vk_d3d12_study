@@ -2,6 +2,7 @@
 
 #include <uxs/db/value.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>

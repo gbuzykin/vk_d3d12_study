@@ -2,7 +2,6 @@
 
 #include "vulkan_api.h"
 
-#include <array>
 #include <cassert>
 #include <cstdint>
 #include <span>

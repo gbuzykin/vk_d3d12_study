@@ -8,6 +8,7 @@
 
 #include <uxs/string_cvt.h>
 
+#include <array>
 #include <unordered_map>
 
 using namespace app3d;
@@ -55,7 +56,7 @@ bool Pipeline::create(RenderTarget& render_target, std::span<IShaderModule* cons
                       const uxs::db::value& config) {
     // Shader stages :
 
-    std::vector<VkPipelineShaderStageCreateInfo> shader_stage_create_infos;
+    uxs::inline_dynarray<VkPipelineShaderStageCreateInfo> shader_stage_create_infos;
 
     const auto& shader_stages = config.value("stages");
     shader_stage_create_infos.reserve(shader_stages.size());
@@ -73,8 +74,8 @@ bool Pipeline::create(RenderTarget& render_target, std::span<IShaderModule* cons
 
     // Vertex layouts :
 
-    std::vector<VkVertexInputBindingDescription> vertex_input_binding_descriptions;
-    std::vector<VkVertexInputAttributeDescription> vertex_attribute_descriptions;
+    uxs::inline_dynarray<VkVertexInputBindingDescription> vertex_input_binding_descriptions;
+    uxs::inline_dynarray<VkVertexInputAttributeDescription> vertex_attribute_descriptions;
 
     const auto& vertex_layouts = config.value("vertex_layouts");
     vertex_input_binding_descriptions.reserve(vertex_layouts.size());

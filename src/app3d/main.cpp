@@ -7,11 +7,11 @@
 
 #include <uxs/db/json.h>
 #include <uxs/io/filebuf.h>
+#include <uxs/io/iostate.h>
 
 #include <array>
 #include <chrono>
 #include <exception>
-#include <vector>
 
 using namespace app3d;
 
