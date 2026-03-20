@@ -4,8 +4,7 @@
 #include "object_destroyer.h"
 #include "render_target.h"
 #include "shader_module.h"
-
-#include "common/logger.h"
+#include "vulkan_logger.h"
 
 #include <uxs/string_cvt.h>
 
@@ -212,7 +211,7 @@ bool Pipeline::create(RenderTarget& render_target, std::span<IShaderModule* cons
     VkResult result = vkCreateGraphicsPipelines(~device_, VK_NULL_HANDLE, 1, &graphics_pipeline_create_info, nullptr,
                                                 &pipeline_);
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't create a graphics pipeline");
+        logError(LOG_VK "couldn't create graphics pipeline: {}", result);
         return false;
     }
 
@@ -232,7 +231,7 @@ bool Pipeline::createDescriptorSetLayout(std::span<const VkDescriptorSetLayoutBi
 
     VkResult result = vkCreateDescriptorSetLayout(~device_, &create_info, nullptr, &descriptor_set_layout_);
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't create a layout for descriptor sets");
+        logError(LOG_VK "couldn't create layout for descriptor sets: {}", result);
         return false;
     }
 
@@ -251,7 +250,7 @@ bool Pipeline::createPipelineLayout(std::span<const VkDescriptorSetLayout> descr
 
     VkResult result = vkCreatePipelineLayout(~device_, &pipeline_layout_create_info, nullptr, &pipeline_layout_);
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't create pipeline layout");
+        logError(LOG_VK "couldn't create pipeline layout: {}", result);
         return false;
     }
 

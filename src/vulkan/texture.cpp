@@ -3,8 +3,7 @@
 #include "device.h"
 #include "object_destroyer.h"
 #include "rendering_driver.h"
-
-#include "common/logger.h"
+#include "vulkan_logger.h"
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -53,7 +52,7 @@ bool Texture::create(VkImageType type, VkFormat format, VkExtent3D size, std::ui
 
     VkResult result = vkCreateImage(~device_, &create_info, nullptr, &image_);
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't create an image");
+        logError(LOG_VK "couldn't create image: {}", result);
         return false;
     }
 
@@ -108,7 +107,7 @@ bool Texture::createImageView(VkImageViewType view_type, VkFormat format, VkImag
 
     VkResult result = vkCreateImageView(~device_, &create_info, nullptr, &image_view_);
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't create an image view");
+        logError(LOG_VK "couldn't create image view: {}", result);
         return false;
     }
 
@@ -136,13 +135,13 @@ bool Texture::allocateAndBindMemoryObjectToImage(VkMemoryPropertyFlagBits desire
     }
 
     if (memory_object_ == VK_NULL_HANDLE) {
-        logError(LOG_VK "couldn't allocate memory for an image");
+        logError(LOG_VK "couldn't allocate memory for image");
         return false;
     }
 
     VkResult result = vkBindImageMemory(~device_, image_, memory_object_, 0);
     if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't bind memory object to an image");
+        logError(LOG_VK "couldn't bind memory object to image: {}", result);
         return false;
     }
 
