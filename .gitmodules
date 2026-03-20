@@ -1,3 +1,6 @@
 [submodule "3rdparty/uxs"]
 	path = 3rdparty/uxs
 	url = ../uxs.git
+[submodule "3rdparty/VulkanMemoryAllocator"]
+	path = 3rdparty/VulkanMemoryAllocator
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git

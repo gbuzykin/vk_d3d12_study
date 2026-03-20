@@ -3,7 +3,8 @@
 #include "device.h"
 #include "sampler.h"
 #include "texture.h"
-#include "vulkan_logger.h"
+
+#include <array>
 
 using namespace app3d;
 using namespace app3d::rel;

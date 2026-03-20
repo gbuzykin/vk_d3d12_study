@@ -1,6 +1,5 @@
 #include "render_target.h"
 
-#include "buffer.h"
 #include "descriptor_set.h"
 #include "device.h"
 #include "object_destroyer.h"
@@ -9,6 +8,8 @@
 #include "swap_chain.h"
 #include "vulkan_logger.h"
 #include "wrappers.h"
+
+#include <array>
 
 using namespace app3d;
 using namespace app3d::rel;
