@@ -21,49 +21,58 @@ using namespace app3d::rel::vulkan;
 RenderTarget::RenderTarget(Device& device, SwapChain& swap_chain) : device_(device), swap_chain_(swap_chain) {}
 
 RenderTarget::~RenderTarget() {
-    destroyImageViews();
-    device_.getGraphicsQueue().releaseCommandBuffer(~command_buffer_);
+    destroyFrameResources();
+    for (auto& kit : frame_render_kits_) {
+        ObjectDestroyer<VkFence>::destroy(~device_, kit.fence);
+        device_.getGraphicsQueue().releaseCommandBuffer(~kit.command_buffer);
+    }
     ObjectDestroyer<VkRenderPass>::destroy(~device_, render_pass_);
-    ObjectDestroyer<VkFence>::destroy(~device_, fence_drawing_);
-    ObjectDestroyer<VkSemaphore>::destroy(~device_, sem_image_acquired_);
-    for (const auto& sem : sem_ready_to_present_) { ObjectDestroyer<VkSemaphore>::destroy(~device_, sem); }
 }
 
 bool RenderTarget::create(const uxs::db::value& opts) {
-    // Drawing synchronization
+    use_depth_ = opts.value<bool>("use_depth");
 
-    if (!device_.createSemaphore(sem_image_acquired_)) { return false; }
-    if (!device_.createFence(true, fence_drawing_)) { return false; }
+    uxs::inline_dynarray<VkAttachmentDescription, 2> attachments_descriptions;
 
-    sem_ready_to_present_.resize(3);
-    for (auto& sem : sem_ready_to_present_) {
-        if (!device_.createSemaphore(sem)) { return false; }
-    }
+    attachments_descriptions.emplace_back(VkAttachmentDescription{
+        .format = swap_chain_.getSurface().getImageFormat().format,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+    });
 
-    // Create render pass
-
-    const std::array attachments_descriptions{
-        VkAttachmentDescription{
-            .format = swap_chain_.getSurface().getImageFormat().format,
+    if (use_depth_) {
+        attachments_descriptions.emplace_back(VkAttachmentDescription{
+            .format = depth_stencil_format_,
             .samples = VK_SAMPLE_COUNT_1_BIT,
             .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+            .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
             .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
             .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
             .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-            .finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-        },
-    };
+            .finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        });
+    }
 
     const std::array color_attachments{VkAttachmentReference{
         .attachment = 0,
         .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
     }};
 
+    const VkAttachmentReference depth_stencil_attachment{
+        .attachment = 1,
+        .layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+    };
+
     const std::array subpass_descriptions{
         Wrapper<VkSubpassDescription>::unwrap({
             .pipeline_type = VK_PIPELINE_BIND_POINT_GRAPHICS,
             .color_attachments = color_attachments,
+            .depth_stencil_attachment = use_depth_ ? &depth_stencil_attachment : nullptr,
         }),
     };
 
@@ -104,172 +113,218 @@ bool RenderTarget::create(const uxs::db::value& opts) {
         return false;
     }
 
-    VkCommandBuffer command_buffer = VK_NULL_HANDLE;
-    if (!device_.getGraphicsQueue().obtainCommandBuffer(command_buffer)) { return false; }
-    command_buffer_ = CommandBuffer::wrap(command_buffer);
+    frame_render_kits_.resize(swap_chain_.getFifCount());
+    for (auto& kit : frame_render_kits_) {
+        if (!device_.createFence(true, kit.fence)) { return false; }
+        VkCommandBuffer command_buffer = VK_NULL_HANDLE;
+        if (!device_.getGraphicsQueue().obtainCommandBuffer(command_buffer)) { return false; }
+        kit.command_buffer = CommandBuffer::wrap(command_buffer);
+    }
 
     return true;
 }
 
-bool RenderTarget::createImageViews() {
-    image_views_.resize(swap_chain_.getImageCount());
+bool RenderTarget::createFrameResources() {
+    image_extent_ = swap_chain_.getImageExtent();
 
-    for (std::size_t n = 0; n < image_views_.size(); ++n) {
-        const VkImageViewCreateInfo image_view_create_info{
-            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .image = swap_chain_.getImage(n),
-            .viewType = VK_IMAGE_VIEW_TYPE_2D,
-            .format = swap_chain_.getSurface().getImageFormat().format,
-            .subresourceRange =
-                {
-                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                    .baseMipLevel = 0,
-                    .levelCount = 1,
-                    .baseArrayLayer = 0,
-                    .layerCount = 1,
-                },
-        };
+    const std::uint32_t image_count = swap_chain_.getImageCount();
 
-        VkResult result = vkCreateImageView(~device_, &image_view_create_info, nullptr, &image_views_[n].image_view);
-        if (result != VK_SUCCESS) {
-            logError(LOG_VK "couldn't create image view for swap chain image: {}", result);
-            return false;
+    frame_resources_.resize(image_count);
+
+    for (std::uint32_t n = 0; n < image_count; ++n) {
+        auto& res = frame_resources_[n];
+
+        uxs::inline_dynarray<VkImageView, 2> attachments;
+        attachments.push_back(swap_chain_.getImageView(n));
+
+        if (use_depth_) {
+            const VkImageCreateInfo create_info{
+                .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                .imageType = VK_IMAGE_TYPE_2D,
+                .format = depth_stencil_format_,
+                .extent = {.width = image_extent_.width, .height = image_extent_.height, .depth = 1},
+                .mipLevels = 1,
+                .arrayLayers = 1,
+                .samples = VK_SAMPLE_COUNT_1_BIT,
+                .tiling = VK_IMAGE_TILING_OPTIMAL,
+                .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+                .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            };
+
+            const VmaAllocationCreateInfo alloc_info{.usage = VMA_MEMORY_USAGE_AUTO};
+
+            VkResult result = vmaCreateImage(device_.getAllocator(), &create_info, &alloc_info,
+                                             &res.depth_stencil_image, &res.depth_stencil_allocation, nullptr);
+            if (result != VK_SUCCESS) {
+                logError(LOG_VK "couldn't create depth&stencil image: {}", result);
+                return false;
+            }
+
+            const VkImageViewCreateInfo view_create_info{
+                .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                .image = res.depth_stencil_image,
+                .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                .format = depth_stencil_format_,
+                .subresourceRange =
+                    {
+                        .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+                        .baseMipLevel = 0,
+                        .levelCount = VK_REMAINING_MIP_LEVELS,
+                        .baseArrayLayer = 0,
+                        .layerCount = VK_REMAINING_ARRAY_LAYERS,
+                    },
+            };
+
+            result = vkCreateImageView(~device_, &view_create_info, nullptr, &res.depth_stencil_image_view);
+            if (result != VK_SUCCESS) {
+                logError(LOG_VK "couldn't create depth&stencil image view: {}", result);
+                return false;
+            }
+
+            attachments.push_back(res.depth_stencil_image_view);
         }
-
-        const std::array attachments{image_views_[n].image_view};
-        const auto& extent = swap_chain_.getImageExtent();
 
         const VkFramebufferCreateInfo framebuffer_create_info{
             .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
             .renderPass = render_pass_,
             .attachmentCount = std::uint32_t(attachments.size()),
             .pAttachments = attachments.data(),
-            .width = extent.width,
-            .height = extent.height,
+            .width = image_extent_.width,
+            .height = image_extent_.height,
             .layers = 1,
         };
 
-        result = vkCreateFramebuffer(~device_, &framebuffer_create_info, nullptr, &image_views_[n].framebuffer);
+        VkResult result = vkCreateFramebuffer(~device_, &framebuffer_create_info, nullptr,
+                                              &frame_resources_[n].framebuffer);
         if (result != VK_SUCCESS) {
             logError(LOG_VK "couldn't create framebuffer: {}", result);
             return false;
         }
     }
 
+    n_frame_ = 0;
     render_target_status_ = RenderTargetResult::SUCCESS;
     return true;
 }
 
-void RenderTarget::destroyImageViews() {
-    for (const auto& item : image_views_) {
-        ObjectDestroyer<VkFramebuffer>::destroy(~device_, item.framebuffer);
-        ObjectDestroyer<VkImageView>::destroy(~device_, item.image_view);
+void RenderTarget::destroyFrameResources() {
+    for (const auto& kit : frame_render_kits_) {
+        device_.waitForFences(std::array{kit.fence}, VK_FALSE, FINISH_FRAME_TIMEOUT);
     }
-    image_views_.clear();
+    for (const auto& item : frame_resources_) {
+        ObjectDestroyer<VkFramebuffer>::destroy(~device_, item.framebuffer);
+        ObjectDestroyer<VkImageView>::destroy(~device_, item.depth_stencil_image_view);
+        vmaDestroyImage(device_.getAllocator(), item.depth_stencil_image, item.depth_stencil_allocation);
+    }
+    frame_resources_.clear();
 }
 
 //@{ IRenderTarget
 
-RenderTargetResult RenderTarget::beginRenderTarget(const Color4f& clear_color) {
+RenderTargetResult RenderTarget::beginRenderTarget(const Color4f& clear_color, float depth, std::uint32_t stencil) {
     if (render_target_status_ > RenderTargetResult::SUBOPTIMAL) { return render_target_status_; }
 
-    if (!device_.waitForFences(std::array{fence_drawing_}, VK_FALSE, FINISH_FRAME_TIMEOUT)) {
+    auto& kit = frame_render_kits_[n_frame_];
+
+    if (!device_.waitForFences(std::array{kit.fence}, VK_FALSE, FINISH_FRAME_TIMEOUT)) {
         return RenderTargetResult::FAILED;
     }
 
     std::uint32_t image_index = 0;
-    render_target_status_ = swap_chain_.acquireImage(ACQUIRE_FRAME_IMAGE_TIMEOUT, sem_image_acquired_, VK_NULL_HANDLE,
-                                                     image_index);
+    render_target_status_ = swap_chain_.acquireFrameImage(n_frame_, ACQUIRE_FRAME_IMAGE_TIMEOUT, image_index);
     if (render_target_status_ > RenderTargetResult::SUBOPTIMAL) { return render_target_status_; }
 
-    if (!command_buffer_.beginCommandBuffer(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) {
+    if (!kit.command_buffer.beginCommandBuffer(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) {
         return RenderTargetResult::FAILED;
     }
 
-    const auto& image_extent = swap_chain_.getImageExtent();
+    swap_chain_.imageBarrierBefore(kit.command_buffer, image_index);
 
-    command_buffer_.beginRenderPass(
-        render_pass_, image_views_[image_index].framebuffer,
-        VkRect2D{.extent = {.width = image_extent.width, .height = image_extent.height}},
-        std::array{VkClearValue{.color = {{clear_color.r, clear_color.g, clear_color.b, clear_color.a}}}},
+    uxs::inline_dynarray<VkClearValue, 2> clear_values;
+    clear_values.emplace_back(VkClearValue{.color = {{clear_color.r, clear_color.g, clear_color.b, clear_color.a}}});
+    if (use_depth_) { clear_values.emplace_back(VkClearValue{.depthStencil = {depth, stencil}}); }
+
+    kit.command_buffer.beginRenderPass(
+        render_pass_, frame_resources_[image_index].framebuffer,
+        VkRect2D{.extent = {.width = image_extent_.width, .height = image_extent_.height}}, clear_values,
         VK_SUBPASS_CONTENTS_INLINE);
 
-    command_buffer_.setViewportState(0, std::array{VkViewport{.x = 0.f,
-                                                              .y = 0.f,
-                                                              .width = float(image_extent.width),
-                                                              .height = float(image_extent.height),
-                                                              .minDepth = 0.f,
-                                                              .maxDepth = 1.f}});
+    kit.command_buffer.setViewportState(0, std::array{VkViewport{.x = 0.f,
+                                                                 .y = 0.f,
+                                                                 .width = float(image_extent_.width),
+                                                                 .height = float(image_extent_.height),
+                                                                 .minDepth = 0.f,
+                                                                 .maxDepth = 1.f}});
 
-    command_buffer_.setScissorState(
+    kit.command_buffer.setScissorState(
         0, std::array{VkRect2D{.offset = {.x = 0, .y = 0},
-                               .extent = {.width = image_extent.width, .height = image_extent.height}}});
+                               .extent = {.width = image_extent_.width, .height = image_extent_.height}}});
 
+    current_pipeline_ = nullptr;
     current_image_index_ = image_index;
     return render_target_status_;
 }
 
 bool RenderTarget::endRenderTarget() {
-    auto& graphics_queue = device_.getGraphicsQueue();
-    auto& present_queue = device_.getPresentQueue();
-
-    if (current_image_index_ == INVALID_UINT32_VALUE) { return false; }
+    auto& kit = frame_render_kits_[n_frame_];
     const std::uint32_t image_index = current_image_index_;
-    current_image_index_ = INVALID_UINT32_VALUE;
 
-    command_buffer_.endRenderPass();
+    kit.command_buffer.endRenderPass();
 
-    if (!command_buffer_.endCommandBuffer()) { return false; }
+    swap_chain_.imageBarrierAfter(kit.command_buffer, image_index);
 
-    if (!device_.resetFences(std::array{fence_drawing_})) { return false; }
+    if (!kit.command_buffer.endCommandBuffer()) { return false; }
 
-    if (!graphics_queue.submitCommandBuffers(
-            {std::array{sem_image_acquired_}, std::array{VkPipelineStageFlags(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT)}},
-            std::array{~command_buffer_}, std::array{sem_ready_to_present_[n_frame_]}, fence_drawing_)) {
-        return false;
-    }
+    if (!device_.resetFences(std::array{kit.fence})) { return false; }
 
-    render_target_status_ = present_queue.presentImages(std::array{sem_ready_to_present_[n_frame_]},
-                                                        {std::array{~swap_chain_}, std::array{image_index}});
+    render_target_status_ = swap_chain_.submitFrameImage(n_frame_, image_index, kit.command_buffer, kit.fence);
 
-    if (++n_frame_ == sem_ready_to_present_.size()) { n_frame_ = 0; }
+    if (++n_frame_ == frame_render_kits_.size()) { n_frame_ = 0; }
     return render_target_status_ <= RenderTargetResult::OUT_OF_DATE;
 }
 
 void RenderTarget::setViewport(const Rect& rect, float z_near, float z_far) {
-    command_buffer_.setViewportState(0, std::array{VkViewport{
-                                            .x = float(rect.offset.x),
-                                            .y = float(rect.offset.y),
-                                            .width = float(rect.extent.width),
-                                            .height = float(rect.extent.height),
-                                            .minDepth = z_near,
-                                            .maxDepth = z_far,
-                                        }});
+    auto& kit = frame_render_kits_[n_frame_];
+    kit.command_buffer.setViewportState(0, std::array{VkViewport{
+                                               .x = float(rect.offset.x),
+                                               .y = float(rect.offset.y),
+                                               .width = float(rect.extent.width),
+                                               .height = float(rect.extent.height),
+                                               .minDepth = z_near,
+                                               .maxDepth = z_far,
+                                           }});
 }
 
 void RenderTarget::setScissor(const Rect& rect) {
-    command_buffer_.setScissorState(
+    auto& kit = frame_render_kits_[n_frame_];
+    kit.command_buffer.setScissorState(
         0, std::array{VkRect2D{.offset = {.x = rect.offset.x, .y = rect.offset.y},
                                .extent = {.width = rect.extent.width, .height = rect.extent.height}}});
 }
 
 void RenderTarget::bindPipeline(IPipeline& pipeline) {
-    command_buffer_.bindPipelineObject(VK_PIPELINE_BIND_POINT_GRAPHICS, ~static_cast<Pipeline&>(pipeline));
+    auto& kit = frame_render_kits_[n_frame_];
+    current_pipeline_ = &static_cast<Pipeline&>(pipeline);
+    kit.command_buffer.bindPipelineObject(VK_PIPELINE_BIND_POINT_GRAPHICS, ~*current_pipeline_);
 }
 
 void RenderTarget::bindVertexBuffer(IBuffer& buffer, std::uint32_t offset, std::uint32_t slot) {
-    command_buffer_.bindVertexBuffers(slot,
-                                      {std::array{~static_cast<Buffer&>(buffer)}, std::array{VkDeviceSize(offset)}});
+    auto& kit = frame_render_kits_[n_frame_];
+    kit.command_buffer.bindVertexBuffers(slot,
+                                         {std::array{~static_cast<Buffer&>(buffer)}, std::array{VkDeviceSize(offset)}});
 }
 
 void RenderTarget::bindDescriptorSet(IPipeline& pipeline, IDescriptorSet& descriptor_set, std::uint32_t set_index) {
-    command_buffer_.bindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS, static_cast<Pipeline&>(pipeline).getLayout(),
-                                       set_index, std::array{~static_cast<DescriptorSet&>(descriptor_set)}, {});
+    auto& kit = frame_render_kits_[n_frame_];
+    kit.command_buffer.bindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS, static_cast<Pipeline&>(pipeline).getLayout(),
+                                          set_index, std::array{~static_cast<DescriptorSet&>(descriptor_set)}, {});
 }
 
 void RenderTarget::drawGeometry(std::uint32_t vertex_count, std::uint32_t instance_count, std::uint32_t first_vertex,
                                 std::uint32_t first_instance) {
-    command_buffer_.drawGeometry(vertex_count, instance_count, first_vertex, first_instance);
+    auto& kit = frame_render_kits_[n_frame_];
+    kit.command_buffer.drawGeometry(vertex_count, instance_count, first_vertex, first_instance);
 }
 
 //@}

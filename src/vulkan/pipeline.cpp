@@ -171,6 +171,17 @@ bool Pipeline::create(RenderTarget& render_target, std::span<IShaderModule* cons
         .alphaToOneEnable = VK_FALSE,
     };
 
+    const VkPipelineDepthStencilStateCreateInfo depth_stencil_state_create_info{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+        .depthTestEnable = VK_TRUE,
+        .depthWriteEnable = VK_TRUE,
+        .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL,
+        .depthBoundsTestEnable = VK_FALSE,
+        .stencilTestEnable = VK_FALSE,
+        .minDepthBounds = 0.0f,
+        .maxDepthBounds = 1.0f,
+    };
+
     const std::array attachment_blend_states{
         VkPipelineColorBlendAttachmentState{
             .blendEnable = VK_FALSE,
@@ -225,6 +236,7 @@ bool Pipeline::create(RenderTarget& render_target, std::span<IShaderModule* cons
         .pViewportState = &viewport_state_create_info,
         .pRasterizationState = &rasterization_state_create_info,
         .pMultisampleState = &multisample_state_create_info,
+        .pDepthStencilState = render_target.useDepth() ? &depth_stencil_state_create_info : nullptr,
         .pColorBlendState = &blend_state_create_info,
         .pDynamicState = &dynamic_state_create_info,
         .layout = pipeline_layout_,

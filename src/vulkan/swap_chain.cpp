@@ -5,6 +5,9 @@
 #include "render_target.h"
 #include "surface.h"
 #include "vulkan_logger.h"
+#include "wrappers.h"
+
+#include <array>
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -17,6 +20,13 @@ SwapChain::SwapChain(Device& device, Surface& surface) : device_(device), surfac
 
 SwapChain::~SwapChain() {
     render_target_.reset();
+    for (auto& kit : submit_kits_) {
+        ObjectDestroyer<VkSemaphore>::destroy(~device_, kit.sem_image_acquired);
+        ObjectDestroyer<VkSemaphore>::destroy(~device_, kit.sem_rendering_complete);
+        ObjectDestroyer<VkSemaphore>::destroy(~device_, kit.sem_ready_to_present);
+        device_.getPresentQueue().releaseCommandBuffer(~kit.present_command_buffer);
+    }
+    destroyImageViews();
     ObjectDestroyer<VkSwapchainKHR>::destroy(~device_, swap_chain_);
 }
 
@@ -94,7 +104,6 @@ VkSurfaceFormatKHR SwapChain::chooseImageFormat(std::span<const VkSurfaceFormatK
 }
 
 bool SwapChain::create(const uxs::db::value& opts) {
-    device_.waitDevice();
     if (!surface_.loadCapabilities(device_.getPhysicalDevice())) { return false; }
 
     const auto& capabilities = surface_.getCapabilities();
@@ -107,10 +116,11 @@ bool SwapChain::create(const uxs::db::value& opts) {
         return false;
     }
 
-    if (render_target_) { render_target_->destroyImageViews(); }
-    images_.clear();
-
     const std::uint32_t layer_count = std::max<std::uint32_t>(opts.value<std::uint32_t>("layer_count"), 1);
+
+    if (render_target_) { render_target_->destroyFrameResources(); }
+    destroyImageViews();
+    images_.clear();
 
     const VkSwapchainCreateInfoKHR create_info{
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
@@ -138,19 +148,112 @@ bool SwapChain::create(const uxs::db::value& opts) {
 
     ObjectDestroyer<VkSwapchainKHR>::destroy(~device_, old_swap_chain);
 
+    if (submit_kits_.empty()) {
+        submit_kits_.resize(getFifCount());
+        for (auto& kit : submit_kits_) {
+            if (!device_.createSemaphore(kit.sem_image_acquired)) { return false; }
+            if (!device_.createSemaphore(kit.sem_rendering_complete)) { return false; }
+            if (device_.getPresentQueue().getFamilyIndex() != device_.getGraphicsQueue().getFamilyIndex()) {
+                if (!device_.createSemaphore(kit.sem_ready_to_present)) { return false; }
+                VkCommandBuffer command_buffer = VK_NULL_HANDLE;
+                if (!device_.getPresentQueue().obtainCommandBuffer(command_buffer)) { return false; }
+                kit.present_command_buffer = CommandBuffer::wrap(command_buffer);
+            }
+        }
+    }
+
     if (!loadImageHandles()) { return false; }
-    if (render_target_ && !render_target_->createImageViews()) { return false; }
+    if (!createImageViews()) { return false; }
+    if (render_target_ && !render_target_->createFrameResources()) { return false; }
 
     return true;
 }
 
-RenderTargetResult SwapChain::acquireImage(std::uint64_t timeout, VkSemaphore semaphore, VkFence fence,
-                                           std::uint32_t& image_index) {
-    VkResult result = vkAcquireNextImageKHR(~device_, swap_chain_, timeout, semaphore, fence, &image_index);
+void SwapChain::imageBarrierBefore(CommandBuffer& command_buffer, std::uint32_t image_index) {}
+
+void SwapChain::imageBarrierAfter(CommandBuffer& command_buffer, std::uint32_t image_index) {
+    if (device_.getGraphicsQueue().getFamilyIndex() != device_.getPresentQueue().getFamilyIndex()) {
+        command_buffer.setImageMemoryBarrier(
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+            std::array{
+                Wrapper<VkImageMemoryBarrier>::unwrap({
+                    .image = images_[image_index],
+                    .current_access = VK_ACCESS_MEMORY_READ_BIT,
+                    .new_access = VK_ACCESS_NONE,
+                    .current_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                    .new_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                    .current_queue_family = device_.getGraphicsQueue().getFamilyIndex(),
+                    .new_queue_family = device_.getPresentQueue().getFamilyIndex(),
+                    .aspect = VK_IMAGE_ASPECT_COLOR_BIT,
+                }),
+            });
+    }
+}
+
+RenderTargetResult SwapChain::acquireFrameImage(std::uint32_t n_frame, std::uint64_t timeout,
+                                                std::uint32_t& image_index) {
+    auto& kit = submit_kits_[n_frame];
+    VkResult result = vkAcquireNextImageKHR(~device_, swap_chain_, timeout, kit.sem_image_acquired, VK_NULL_HANDLE,
+                                            &image_index);
     if (result == VK_SUCCESS) { return RenderTargetResult::SUCCESS; }
     if (result == VK_SUBOPTIMAL_KHR) { return RenderTargetResult::SUBOPTIMAL; }
     if (result == VK_ERROR_OUT_OF_DATE_KHR) { return RenderTargetResult::OUT_OF_DATE; }
     return RenderTargetResult::FAILED;
+}
+
+RenderTargetResult SwapChain::submitFrameImage(std::uint32_t n_frame, std::uint32_t image_index,
+                                               CommandBuffer& command_buffer, VkFence fence) {
+    auto& kit = submit_kits_[n_frame];
+
+    const bool queue_family_transition = device_.getGraphicsQueue().getFamilyIndex() !=
+                                         device_.getPresentQueue().getFamilyIndex();
+
+    if (!device_.getGraphicsQueue().submitCommandBuffers(
+            {std::array{kit.sem_image_acquired},
+             std::array{VkPipelineStageFlags(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)}},
+            std::array{~command_buffer}, std::array{kit.sem_rendering_complete},
+            queue_family_transition ? VK_NULL_HANDLE : fence)) {
+        return RenderTargetResult::FAILED;
+    }
+
+    VkSemaphore ready_to_present = kit.sem_rendering_complete;
+
+    if (queue_family_transition) {
+        auto& present_command_buffer = kit.present_command_buffer;
+
+        if (!present_command_buffer.beginCommandBuffer(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) {
+            return RenderTargetResult::FAILED;
+        }
+
+        present_command_buffer.setImageMemoryBarrier(
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+            std::array{
+                Wrapper<VkImageMemoryBarrier>::unwrap({
+                    .image = images_[image_index],
+                    .current_access = VK_ACCESS_NONE,
+                    .new_access = VK_ACCESS_NONE,
+                    .current_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                    .new_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                    .current_queue_family = device_.getGraphicsQueue().getFamilyIndex(),
+                    .new_queue_family = device_.getPresentQueue().getFamilyIndex(),
+                    .aspect = VK_IMAGE_ASPECT_COLOR_BIT,
+                }),
+            });
+
+        if (!present_command_buffer.endCommandBuffer()) { return RenderTargetResult::FAILED; }
+
+        if (!device_.getPresentQueue().submitCommandBuffers(
+                {std::array{kit.sem_rendering_complete},
+                 std::array{VkPipelineStageFlags(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT)}},
+                std::array{~present_command_buffer}, std::array{kit.sem_ready_to_present}, fence)) {
+            return RenderTargetResult::FAILED;
+        }
+
+        ready_to_present = kit.sem_ready_to_present;
+    }
+
+    return device_.getPresentQueue().presentImages(std::array{ready_to_present},
+                                                   {std::array{swap_chain_}, std::array{image_index}});
 }
 
 //@{ ISwapChain
@@ -164,7 +267,7 @@ Extent2u SwapChain::getImageExtent() const {
 IRenderTarget* SwapChain::createRenderTarget(const uxs::db::value& opts) {
     auto render_target = std::make_unique<RenderTarget>(device_, *this);
     if (!render_target->create(opts)) { return nullptr; }
-    if (!render_target->createImageViews()) { return nullptr; }
+    if (!render_target->createFrameResources()) { return nullptr; }
     render_target_ = std::move(render_target);
     return render_target_.get();
 }
@@ -187,4 +290,38 @@ bool SwapChain::loadImageHandles() {
     }
 
     return true;
+}
+
+bool SwapChain::createImageViews() {
+    image_views_.resize(images_.size(), VK_NULL_HANDLE);
+
+    for (std::size_t n = 0; n < image_views_.size(); ++n) {
+        const VkImageViewCreateInfo create_info{
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image = images_[n],
+            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .format = surface_.getImageFormat().format,
+            .subresourceRange =
+                {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1,
+                },
+        };
+
+        VkResult result = vkCreateImageView(~device_, &create_info, nullptr, &image_views_[n]);
+        if (result != VK_SUCCESS) {
+            logError(LOG_VK "couldn't create image view for swap chain image: {}", result);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void SwapChain::destroyImageViews() {
+    for (const auto& view : image_views_) { ObjectDestroyer<VkImageView>::destroy(~device_, view); }
+    image_views_.clear();
 }

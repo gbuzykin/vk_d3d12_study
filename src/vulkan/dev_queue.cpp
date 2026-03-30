@@ -120,6 +120,7 @@ bool DevQueue::obtainCommandBuffer(VkCommandBuffer& command_buffer) {
 }
 
 void DevQueue::releaseCommandBuffer(VkCommandBuffer command_buffer) {
+    if (command_buffer == VK_NULL_HANDLE) { return; }
     auto found_it = std::ranges::find(allocated_command_buffers_, command_buffer);
     if (found_it == allocated_command_buffers_.end()) { return; }
     std::copy(found_it + 1, allocated_command_buffers_.end(), found_it);
