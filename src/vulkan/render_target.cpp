@@ -275,19 +275,19 @@ bool RenderTarget::endRenderTarget() {
 
 void RenderTarget::setViewport(const Rect& rect, float z_near, float z_far) {
     auto& kit = frame_render_kits_[n_frame_];
-    kit.command_buffer.setViewportState(0, std::array{VkViewport{
-                                               .x = float(rect.offset.x),
-                                               .y = float(rect.offset.y),
-                                               .width = float(rect.extent.width),
-                                               .height = float(rect.extent.height),
-                                               .minDepth = z_near,
-                                               .maxDepth = z_far,
-                                           }});
+    kit.command_buffer.setViewports(0, std::array{VkViewport{
+                                           .x = float(rect.offset.x),
+                                           .y = float(rect.offset.y),
+                                           .width = float(rect.extent.width),
+                                           .height = float(rect.extent.height),
+                                           .minDepth = z_near,
+                                           .maxDepth = z_far,
+                                       }});
 }
 
 void RenderTarget::setScissor(const Rect& rect) {
     auto& kit = frame_render_kits_[n_frame_];
-    kit.command_buffer.setScissorState(
+    kit.command_buffer.setScissors(
         0, std::array{VkRect2D{.offset = {.x = rect.offset.x, .y = rect.offset.y},
                                .extent = {.width = rect.extent.width, .height = rect.extent.height}}});
 }
@@ -307,6 +307,15 @@ void RenderTarget::bindDescriptorSet(IPipeline& pipeline, IDescriptorSet& descri
     auto& kit = frame_render_kits_[n_frame_];
     kit.command_buffer.bindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS, static_cast<Pipeline&>(pipeline).getLayout(),
                                           set_index, std::array{~static_cast<DescriptorSet&>(descriptor_set)}, {});
+}
+
+void RenderTarget::setPrimitiveTopology(PrimitiveTopology topology) {
+    constexpr std::array topologies{
+        VK_PRIMITIVE_TOPOLOGY_POINT_LIST,    VK_PRIMITIVE_TOPOLOGY_LINE_LIST,      VK_PRIMITIVE_TOPOLOGY_LINE_STRIP,
+        VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
+    };
+    auto& kit = frame_render_kits_[n_frame_];
+    kit.command_buffer.setPrimitiveTopology(topologies[unsigned(topology)]);
 }
 
 void RenderTarget::drawGeometry(std::uint32_t vertex_count, std::uint32_t instance_count, std::uint32_t first_vertex,
