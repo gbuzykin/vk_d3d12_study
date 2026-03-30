@@ -96,7 +96,8 @@ struct IDescriptorSet {
 
 struct IRenderTarget {
     virtual ~IRenderTarget() = default;
-    virtual RenderTargetResult beginRenderTarget(const Color4f& clear_color) = 0;
+    virtual std::uint32_t getFrameInFlightCount() const = 0;
+    virtual RenderTargetResult beginRenderTarget(const Color4f& clear_color, float depth, std::uint32_t stencil) = 0;
     virtual bool endRenderTarget() = 0;
     virtual void setViewport(const Rect& rect, float z_near, float z_far) = 0;
     virtual void setScissor(const Rect& rect) = 0;

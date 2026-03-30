@@ -4,7 +4,7 @@
 
 #include "interfaces/i_rendering_driver.h"
 
-#include <vector>
+#include <uxs/dynarray.h>
 
 namespace app3d::rel::vulkan {
 
@@ -32,6 +32,7 @@ class SwapChain final : public ISwapChain {
     VkSwapchainKHR operator~() { return swap_chain_; }
     Surface& getSurface() { return surface_; }
     VkImage getImage(std::uint32_t image_index) { return images_[image_index]; }
+    VkImageView getImageView(std::uint32_t image_index) { return image_views_[image_index]; }
     std::uint32_t getImageCount() const { return std::uint32_t(images_.size()); }
 
     //@{ ISwapChain
@@ -46,10 +47,13 @@ class SwapChain final : public ISwapChain {
     Surface& surface_;
     VkSwapchainKHR swap_chain_{VK_NULL_HANDLE};
     VkExtent2D image_extent_{0, 0};
-    std::vector<VkImage> images_;
+    uxs::inline_dynarray<VkImage, 3> images_;
+    uxs::inline_dynarray<VkImageView, 3> image_views_;
     std::unique_ptr<RenderTarget> render_target_;
 
     bool loadImageHandles();
+    bool createImageViews();
+    void destroyImageViews();
 };
 
 }  // namespace app3d::rel::vulkan

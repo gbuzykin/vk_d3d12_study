@@ -17,6 +17,7 @@ SwapChain::SwapChain(Device& device, Surface& surface) : device_(device), surfac
 
 SwapChain::~SwapChain() {
     render_target_.reset();
+    destroyImageViews();
     ObjectDestroyer<VkSwapchainKHR>::destroy(~device_, swap_chain_);
 }
 
@@ -107,7 +108,8 @@ bool SwapChain::create(const uxs::db::value& opts) {
         return false;
     }
 
-    if (render_target_) { render_target_->destroyImageViews(); }
+    if (render_target_) { render_target_->destroyFrameResources(); }
+    destroyImageViews();
     images_.clear();
 
     const std::uint32_t layer_count = std::max<std::uint32_t>(opts.value<std::uint32_t>("layer_count"), 1);
@@ -139,7 +141,8 @@ bool SwapChain::create(const uxs::db::value& opts) {
     ObjectDestroyer<VkSwapchainKHR>::destroy(~device_, old_swap_chain);
 
     if (!loadImageHandles()) { return false; }
-    if (render_target_ && !render_target_->createImageViews()) { return false; }
+    if (!createImageViews()) { return false; }
+    if (render_target_ && !render_target_->createFrameResources()) { return false; }
 
     return true;
 }
@@ -158,7 +161,7 @@ RenderTargetResult SwapChain::acquireImage(std::uint64_t timeout, VkSemaphore se
 IRenderTarget* SwapChain::createRenderTarget(const uxs::db::value& opts) {
     auto render_target = std::make_unique<RenderTarget>(device_, *this);
     if (!render_target->create(opts)) { return nullptr; }
-    if (!render_target->createImageViews()) { return nullptr; }
+    if (!render_target->createFrameResources()) { return nullptr; }
     render_target_ = std::move(render_target);
     return render_target_.get();
 }
@@ -181,4 +184,38 @@ bool SwapChain::loadImageHandles() {
     }
 
     return true;
+}
+
+bool SwapChain::createImageViews() {
+    image_views_.resize(images_.size(), VK_NULL_HANDLE);
+
+    for (std::size_t n = 0; n < image_views_.size(); ++n) {
+        const VkImageViewCreateInfo create_info{
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image = images_[n],
+            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .format = surface_.getImageFormat().format,
+            .subresourceRange =
+                {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1,
+                },
+        };
+
+        VkResult result = vkCreateImageView(~device_, &create_info, nullptr, &image_views_[n]);
+        if (result != VK_SUCCESS) {
+            logError(LOG_VK "couldn't create image view for swap chain image: {}", result);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void SwapChain::destroyImageViews() {
+    for (const auto& view : image_views_) { ObjectDestroyer<VkImageView>::destroy(~device_, view); }
+    image_views_.clear();
 }

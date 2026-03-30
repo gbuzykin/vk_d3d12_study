@@ -30,9 +30,7 @@ const std::array g_device_extensions{
 
 Device::Device(RenderingDriver& instance, PhysicalDevice& physical_device)
     : instance_(instance), physical_device_(physical_device), graphics_queue_(*this), compute_queue_(*this),
-      transfer_queue_(*this), present_queue_(*this) {
-    for (unsigned n = 0; n < TRANSFER_KIT_COUNT; ++n) { transfer_kits_.emplace_back(*this); }
-}
+      transfer_queue_(*this), present_queue_(*this) {}
 
 Device::~Device() {
     ObjectDestroyer<VkDescriptorPool>::destroy(device_, descriptor_pool_);
@@ -194,7 +192,9 @@ bool Device::create(const uxs::db::value& caps) {
     if (!transfer_queue_.create()) { return false; }
     if (!present_queue_.create()) { return false; }
 
-    for (auto& kit : transfer_kits_) {
+    transfer_kits_.reserve(TRANSFER_KIT_COUNT);
+    for (unsigned n = 0; n < TRANSFER_KIT_COUNT; ++n) {
+        auto& kit = transfer_kits_.emplace_back(*this);
         VkCommandBuffer command_buffer = VK_NULL_HANDLE;
         if (!transfer_queue_.obtainCommandBuffer(command_buffer)) { return false; }
         kit.command_buffer = CommandBuffer::wrap(command_buffer);
