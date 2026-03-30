@@ -30,8 +30,6 @@ class Texture final : public ITexture {
     VkImage image_{VK_NULL_HANDLE};
     VmaAllocation allocation_{VK_NULL_HANDLE};
     VkImageView image_view_{VK_NULL_HANDLE};
-
-    bool createImageView(VkImageViewType view_type, VkFormat format, VkImageAspectFlags aspect);
 };
 
 }  // namespace app3d::rel::vulkan
