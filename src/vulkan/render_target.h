@@ -34,6 +34,7 @@ class RenderTarget final : public IRenderTarget {
     void bindPipeline(IPipeline& pipeline) override;
     void bindVertexBuffer(IBuffer& buffer, std::size_t offset, std::uint32_t binding) override;
     void bindDescriptorSet(IPipeline& pipeline, IDescriptorSet& descriptor_set, std::uint32_t set_index) override;
+    void setPrimitiveTopology(PrimitiveTopology topology) override;
     void drawGeometry(std::uint32_t vertex_count, std::uint32_t instance_count, std::uint32_t first_vertex,
                       std::uint32_t first_instance) override;
     //@}
