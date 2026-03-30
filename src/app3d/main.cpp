@@ -121,7 +121,7 @@ int App3DMainWindow::init(int argc, char** argv) {
 
     if (!(swap_chain_ = surface_->createSwapChain(*device_, swap_chain_opts_))) { return -1; }
 
-    if (!(render_target_ = swap_chain_->createRenderTarget({}))) { return -1; }
+    if (!(render_target_ = swap_chain_->createRenderTarget(JSON({"use_depth" : true})))) { return -1; }
 
     if (!initScene()) { return -1; }
 
@@ -195,7 +195,7 @@ bool App3DMainWindow::initScene() {
 }
 
 bool App3DMainWindow::renderScene() {
-    const auto result = render_target_->beginRenderTarget({0.1f, 0.2f, 0.3f, 1.0f});
+    const auto result = render_target_->beginRenderTarget({0.1f, 0.2f, 0.3f, 1.0f}, 1.0f, 0);
     if (result == rel::RenderTargetResult::SUBOPTIMAL || result == rel::RenderTargetResult::OUT_OF_DATE) {
         scheduleRecreateSwapChain();
         if (result == rel::RenderTargetResult::OUT_OF_DATE) { return true; }

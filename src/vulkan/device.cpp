@@ -139,11 +139,6 @@ bool Device::create(const uxs::db::value& caps) {
         }
     }
 
-    if (present_queue_.getFamilyIndex() != graphics_queue_.getFamilyIndex()) {
-        logError(LOG_VK "different graphics and present queue families");
-        return false;
-    }
-
     add_queue_family(present_queue_.getFamilyIndex(), priority);
 
     const VkDeviceCreateInfo create_info{

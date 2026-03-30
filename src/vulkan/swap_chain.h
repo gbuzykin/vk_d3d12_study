@@ -1,10 +1,8 @@
 #pragma once
 
-#include "vulkan_api.h"
+#include "command_buffer.h"
 
-#include "interfaces/i_rendering_driver.h"
-
-#include <vector>
+#include <uxs/dynarray.h>
 
 namespace app3d::rel::vulkan {
 
@@ -26,13 +24,18 @@ class SwapChain final : public ISwapChain {
     static VkSurfaceFormatKHR chooseImageFormat(std::span<const VkSurfaceFormatKHR> formats);
 
     bool create(const uxs::db::value& opts);
-    RenderTargetResult acquireImage(std::uint64_t timeout, VkSemaphore semaphore, VkFence fence,
-                                    std::uint32_t& image_index);
+    VkImage getImage(std::uint32_t image_index) { return images_[image_index]; }
+    VkImageView getImageView(std::uint32_t image_index) { return image_views_[image_index]; }
+    std::uint32_t getImageCount() const { return std::uint32_t(images_.size()); }
+    std::uint32_t getFifCount() const { return 3; }
+    void imageBarrierBefore(CommandBuffer& command_buffer, std::uint32_t image_index);
+    bool imageBarrierAfter(CommandBuffer& command_buffer, std::uint32_t image_index);
+    RenderTargetResult acquireImage(std::uint64_t timeout, VkSemaphore semaphore, std::uint32_t& image_index);
+    RenderTargetResult presentImage(std::uint32_t n_frame, std::uint32_t image_index, VkSemaphore wait_semaphore,
+                                    VkFence fence);
 
     VkSwapchainKHR operator~() { return swap_chain_; }
     Surface& getSurface() { return surface_; }
-    VkImage getImage(std::uint32_t image_index) { return images_[image_index]; }
-    std::uint32_t getImageCount() const { return std::uint32_t(images_.size()); }
 
     //@{ ISwapChain
     Extent2u getImageExtent() const override {
@@ -46,10 +49,20 @@ class SwapChain final : public ISwapChain {
     Surface& surface_;
     VkSwapchainKHR swap_chain_{VK_NULL_HANDLE};
     VkExtent2D image_extent_{0, 0};
-    std::vector<VkImage> images_;
+    uxs::inline_dynarray<VkImage, 3> images_;
+    uxs::inline_dynarray<VkImageView, 3> image_views_;
     std::unique_ptr<RenderTarget> render_target_;
 
+    struct PresentKit {
+        VkSemaphore sem_ready_to_present{VK_NULL_HANDLE};
+        CommandBuffer command_buffer;
+    };
+
+    uxs::inline_dynarray<PresentKit, 3> present_kits_;
+
     bool loadImageHandles();
+    bool createImageViews();
+    void destroyImageViews();
 };
 
 }  // namespace app3d::rel::vulkan

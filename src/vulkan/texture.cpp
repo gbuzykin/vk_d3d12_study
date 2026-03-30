@@ -57,7 +57,26 @@ bool Texture::create(VkImageType type, VkFormat format, VkExtent3D size, std::ui
         return false;
     }
 
-    if (!createImageView(view_type, format, VK_IMAGE_ASPECT_COLOR_BIT)) { return false; }
+    const VkImageViewCreateInfo view_create_info{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image = image_,
+        .viewType = view_type,
+        .format = format,
+        .subresourceRange =
+            {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = VK_REMAINING_MIP_LEVELS,
+                .baseArrayLayer = 0,
+                .layerCount = VK_REMAINING_ARRAY_LAYERS,
+            },
+    };
+
+    result = vkCreateImageView(~device_, &view_create_info, nullptr, &image_view_);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't create image view: {}", result);
+        return false;
+    }
 
     return true;
 }
@@ -80,35 +99,3 @@ bool Texture::updateTexture(std::span<const std::uint8_t> data, Vec3i offset, Ex
 }
 
 //@}
-
-bool Texture::createImageView(VkImageViewType view_type, VkFormat format, VkImageAspectFlags aspect) {
-    const VkImageViewCreateInfo create_info{
-        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image = image_,
-        .viewType = view_type,
-        .format = format,
-        .components =
-            {
-                .r = VK_COMPONENT_SWIZZLE_IDENTITY,
-                .g = VK_COMPONENT_SWIZZLE_IDENTITY,
-                .b = VK_COMPONENT_SWIZZLE_IDENTITY,
-                .a = VK_COMPONENT_SWIZZLE_IDENTITY,
-            },
-        .subresourceRange =
-            {
-                .aspectMask = aspect,
-                .baseMipLevel = 0,
-                .levelCount = VK_REMAINING_MIP_LEVELS,
-                .baseArrayLayer = 0,
-                .layerCount = VK_REMAINING_ARRAY_LAYERS,
-            },
-    };
-
-    VkResult result = vkCreateImageView(~device_, &create_info, nullptr, &image_view_);
-    if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't create image view: {}", result);
-        return false;
-    }
-
-    return true;
-}
