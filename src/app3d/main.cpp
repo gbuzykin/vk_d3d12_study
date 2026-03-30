@@ -270,6 +270,8 @@ bool App3DMainWindow::renderScene() {
 
     render_target_->bindVertexBuffer(*vertex_buffer_, 0, 0);
 
+    render_target_->setPrimitiveTopology(rel::PrimitiveTopology::TRIANGLE_STRIP);
+
     render_target_->drawGeometry(4, 1, 0, 0);
 
     if (!render_target_->endRenderTarget()) { return false; }

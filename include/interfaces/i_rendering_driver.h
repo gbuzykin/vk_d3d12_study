@@ -60,6 +60,14 @@ struct Rect {
     Extent2u extent;
 };
 
+enum class PrimitiveTopology {
+    POINTS = 0,
+    LINES,
+    LINE_STRIP,
+    TRIANGLES,
+    TRIANGLE_STRIP,
+};
+
 struct IShaderModule {
     virtual ~IShaderModule() = default;
 };
@@ -97,6 +105,7 @@ struct IRenderTarget {
     virtual void bindPipeline(IPipeline& pipeline) = 0;
     virtual void bindVertexBuffer(IBuffer& buffer, std::uint32_t offset, std::uint32_t slot) = 0;
     virtual void bindDescriptorSet(IPipeline& pipeline, IDescriptorSet& descriptor_set, std::uint32_t set_index) = 0;
+    virtual void setPrimitiveTopology(PrimitiveTopology topology) = 0;
     virtual void drawGeometry(std::uint32_t vertex_count, std::uint32_t instance_count, std::uint32_t first_vertex,
                               std::uint32_t first_instance) = 0;
 };
