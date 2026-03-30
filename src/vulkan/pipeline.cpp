@@ -114,7 +114,7 @@ bool Pipeline::create(RenderTarget& render_target, std::span<IShaderModule* cons
 
     const VkPipelineInputAssemblyStateCreateInfo input_assembly_state_create_info{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
+        .topology = VK_PRIMITIVE_TOPOLOGY_POINT_LIST,
         .primitiveRestartEnable = false,
     };
 
@@ -184,7 +184,11 @@ bool Pipeline::create(RenderTarget& render_target, std::span<IShaderModule* cons
         .blendConstants = {1.0f, 1.0f, 1.0f, 1.0f},
     };
 
-    const std::array dynamic_states{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    const std::array dynamic_states{
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_SCISSOR,
+        VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY,
+    };
     const VkPipelineDynamicStateCreateInfo dynamic_state_create_info{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
         .dynamicStateCount = std::uint32_t(dynamic_states.size()),

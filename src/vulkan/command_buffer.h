@@ -44,13 +44,15 @@ class CommandBuffer {
         vkCmdBindPipeline(command_buffer_, pipeline_type, pipeline);
     }
 
-    void setViewportState(std::uint32_t first_viewport, std::span<const VkViewport> viewports) {
+    void setViewports(std::uint32_t first_viewport, std::span<const VkViewport> viewports) {
         vkCmdSetViewport(command_buffer_, first_viewport, std::uint32_t(viewports.size()), viewports.data());
     }
 
-    void setScissorState(std::uint32_t first_scissor, std::span<const VkRect2D> scissors) {
+    void setScissors(std::uint32_t first_scissor, std::span<const VkRect2D> scissors) {
         vkCmdSetScissor(command_buffer_, first_scissor, std::uint32_t(scissors.size()), scissors.data());
     }
+
+    void setPrimitiveTopology(VkPrimitiveTopology topology) { vkCmdSetPrimitiveTopology(command_buffer_, topology); }
 
     void bindVertexBuffers(std::uint32_t first_binding, util::multispan<const VkBuffer, const VkDeviceSize> buffers) {
         vkCmdBindVertexBuffers(command_buffer_, first_binding, std::uint32_t(buffers.size()), buffers.data<0>(),

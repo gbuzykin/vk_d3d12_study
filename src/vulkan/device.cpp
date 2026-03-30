@@ -473,7 +473,7 @@ ITexture* Device::createTexture(Extent3u extent) {
 ISampler* Device::createSampler() {
     auto sampler = std::make_unique<Sampler>(*this);
     if (!sampler->create(VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST,
-                         VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+                         VK_SAMPLER_ADDRESS_MODE_REPEAT, VK_SAMPLER_ADDRESS_MODE_REPEAT,
                          VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, 0.0f, false, 1.0f, false, VK_COMPARE_OP_ALWAYS, 0.0f,
                          1.0f, VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK, false)) {
         return nullptr;
