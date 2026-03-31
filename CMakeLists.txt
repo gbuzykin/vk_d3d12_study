@@ -76,6 +76,8 @@ endif()
 set(APP3D_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
 include_directories(${APP3D_INCLUDE_DIR})
 include_directories(${PROJECT_BINARY_DIR}/generated)
+include_directories(${CMAKE_SOURCE_DIR}/3rdparty/stb_image)
+include_directories(${CMAKE_SOURCE_DIR}/3rdparty/tiny_obj_loader)
 
 add_subdirectory(src/common)
 add_subdirectory(src/vulkan)
