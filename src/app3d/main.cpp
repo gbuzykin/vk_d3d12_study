@@ -185,7 +185,14 @@ bool App3DMainWindow::initScene() {
     auto* pixel_shader_module = device_->createShaderModule(pixel_shader_spv);
     if (!pixel_shader_module) { return false; }
 
-    const auto pipeline_layout_config = JSON({});
+    const auto pipeline_layout_config = JSON({
+        "descriptor_set_layouts" : [ {
+            "desc_list" : [
+                {"binding" : 0, "type" : "texture_sampler", "count" : 1, "stages" : ["pixel"]},
+                {"binding" : 1, "type" : "constant_buffer", "count" : 1, "stages" : ["vertex"]}
+            ]
+        } ]
+    });
 
     if (!(pipeline_layout_ = device_->createPipelineLayout(pipeline_layout_config))) { return false; }
 
@@ -218,7 +225,7 @@ bool App3DMainWindow::initScene() {
     if (!(sampler_ = device_->createSampler())) { return false; }
 
     if (!(descriptor_set_ = device_->createDescriptorSet(*pipeline_layout_))) { return false; }
-    descriptor_set_->updateTextureSamplerDescriptor(*texture_, *sampler_);
+    descriptor_set_->updateTextureSamplerDescriptor(*texture_, *sampler_, 0);
 
     const std::vector<float> vertices{
         -0.75f, -0.75f, 0.0f, 0.0f, 0.0f, -0.75f, 0.75f, 0.0f, 0.0f, 1.0f,
