@@ -1,6 +1,7 @@
 #include "descriptor_set.h"
 
 #include "device.h"
+#include "pipeline_layout.h"
 #include "sampler.h"
 #include "texture.h"
 
@@ -13,12 +14,13 @@ using namespace app3d::rel::vulkan;
 // --------------------------------------------------------
 // DescriptorSet class implementation
 
-DescriptorSet::DescriptorSet(Device& device) : device_(device) {}
+DescriptorSet::DescriptorSet(Device& device, PipelineLayout& pipeline_layout)
+    : device_(device), pipeline_layout_(pipeline_layout) {}
 
 DescriptorSet::~DescriptorSet() { device_.releaseDescriptorSet(descriptor_set_); }
 
-bool DescriptorSet::create(VkDescriptorSetLayout descriptor_set_layout) {
-    return device_.obtainDescriptorSet(descriptor_set_layout, descriptor_set_);
+bool DescriptorSet::create() {
+    return device_.obtainDescriptorSet(pipeline_layout_.getDescriptorSetLayout(), descriptor_set_);
 }
 
 //@{ IDescriptorSet

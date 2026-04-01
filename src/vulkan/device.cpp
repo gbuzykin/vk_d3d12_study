@@ -3,6 +3,7 @@
 #include "descriptor_set.h"
 #include "object_destroyer.h"
 #include "pipeline.h"
+#include "pipeline_layout.h"
 #include "render_target.h"
 #include "rendering_driver.h"
 #include "sampler.h"
@@ -233,6 +234,7 @@ bool Device::create(const uxs::db::value& caps) {
     }
 
     shader_modules_.reserve(16);
+    pipeline_layouts_.reserve(16);
     pipelines_.reserve(16);
     buffers_.reserve(16);
     textures_.reserve(16);
@@ -250,6 +252,7 @@ void Device::finalize() {
     textures_.clear();
     buffers_.clear();
     pipelines_.clear();
+    pipeline_layouts_.clear();
     shader_modules_.clear();
     graphics_queue_.destroy();
     compute_queue_.destroy();
@@ -467,9 +470,15 @@ IShaderModule* Device::createShaderModule(std::span<const std::uint32_t> source)
     return shader_modules_.emplace_back(std::move(shader_module)).get();
 }
 
-IPipeline* Device::createPipeline(IRenderTarget& render_target, std::span<IShaderModule* const> shader_modules,
-                                  const uxs::db::value& config) {
-    auto pipeline = std::make_unique<Pipeline>(*this);
+IPipelineLayout* Device::createPipelineLayout(const uxs::db::value& config) {
+    auto pipeline_layout = std::make_unique<PipelineLayout>(*this);
+    if (!pipeline_layout->create(config)) { return nullptr; }
+    return pipeline_layouts_.emplace_back(std::move(pipeline_layout)).get();
+}
+
+IPipeline* Device::createPipeline(IRenderTarget& render_target, IPipelineLayout& pipeline_layout,
+                                  std::span<IShaderModule* const> shader_modules, const uxs::db::value& config) {
+    auto pipeline = std::make_unique<Pipeline>(*this, static_cast<PipelineLayout&>(pipeline_layout));
     if (!pipeline->create(static_cast<RenderTarget&>(render_target), shader_modules, config)) { return nullptr; }
     return pipelines_.emplace_back(std::move(pipeline)).get();
 }
@@ -505,9 +514,9 @@ ISampler* Device::createSampler() {
     return samplers_.emplace_back(std::move(sampler)).get();
 }
 
-IDescriptorSet* Device::createDescriptorSet(IPipeline& pipeline) {
-    auto descriptor_set = std::make_unique<DescriptorSet>(*this);
-    if (!descriptor_set->create(static_cast<Pipeline&>(pipeline).getDescriptorSetLayout())) { return nullptr; }
+IDescriptorSet* Device::createDescriptorSet(IPipelineLayout& pipeline_layout) {
+    auto descriptor_set = std::make_unique<DescriptorSet>(*this, static_cast<PipelineLayout&>(pipeline_layout));
+    if (!descriptor_set->create()) { return nullptr; }
     return descriptor_sets_.emplace_back(std::move(descriptor_set)).get();
 }
 
