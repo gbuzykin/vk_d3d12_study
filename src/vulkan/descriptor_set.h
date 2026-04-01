@@ -22,8 +22,8 @@ class DescriptorSet final : public IDescriptorSet {
     PipelineLayout& getLayout() { return pipeline_layout_; }
 
     //@{ IDescriptorSet
-    void updateTextureSamplerDescriptor(ITexture& texture, ISampler& sampler) override;
-    void updateConstantBufferDescriptor(IBuffer& buffer) override;
+    void updateTextureSamplerDescriptor(ITexture& texture, ISampler& sampler, std::uint32_t slot) override;
+    void updateConstantBufferDescriptor(IBuffer& buffer, std::uint32_t slot) override;
     //@}
 
  private:

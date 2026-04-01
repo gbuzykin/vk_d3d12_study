@@ -10,8 +10,6 @@
 #include "vulkan_logger.h"
 #include "wrappers.h"
 
-#include <array>
-
 using namespace app3d;
 using namespace app3d::rel;
 using namespace app3d::rel::vulkan;
@@ -305,9 +303,10 @@ void RenderTarget::bindPipeline(IPipeline& pipeline) {
     kit.command_buffer.bindPipelineObject(VK_PIPELINE_BIND_POINT_GRAPHICS, ~*current_pipeline_);
 }
 
-void RenderTarget::bindVertexBuffer(IBuffer& buffer, std::size_t offset, std::uint32_t binding) {
+void RenderTarget::bindVertexBuffer(IBuffer& buffer, std::size_t offset, std::uint32_t slot) {
     auto& kit = frame_render_kits_[n_frame_];
-    kit.command_buffer.bindVertexBuffers(binding, {std::array{~static_cast<Buffer&>(buffer)}, std::array{offset}});
+    kit.command_buffer.bindVertexBuffers(current_pipeline_->getBinding(Pipeline::BindingType::VERTEX_BUFFER, slot),
+                                         {std::array{~static_cast<Buffer&>(buffer)}, std::array{offset}});
 }
 
 void RenderTarget::bindDescriptorSet(IDescriptorSet& descriptor_set, std::uint32_t set_index) {
