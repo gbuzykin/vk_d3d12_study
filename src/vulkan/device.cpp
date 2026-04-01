@@ -221,7 +221,11 @@ bool Device::create(const uxs::db::value& caps) {
                               std::array{
                                   VkDescriptorPoolSize{
                                       .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                                      .descriptorCount = 8,
+                                      .descriptorCount = 4,
+                                  },
+                                  VkDescriptorPoolSize{
+                                      .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                                      .descriptorCount = 4,
                                   },
                               },
                               descriptor_pool_)) {
@@ -470,9 +474,13 @@ IPipeline* Device::createPipeline(IRenderTarget& render_target, std::span<IShade
     return pipelines_.emplace_back(std::move(pipeline)).get();
 }
 
-IBuffer* Device::createBuffer(std::size_t size) {
+IBuffer* Device::createBuffer(std::size_t size, BufferType type) {
+    constexpr std::array usage{
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+    };
     auto buffer = std::make_unique<Buffer>(*this);
-    if (!buffer->create(size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT)) { return nullptr; }
+    if (!buffer->create(size, usage[unsigned(type)] | VK_BUFFER_USAGE_TRANSFER_DST_BIT)) { return nullptr; }
     return buffers_.emplace_back(std::move(buffer)).get();
 }
 

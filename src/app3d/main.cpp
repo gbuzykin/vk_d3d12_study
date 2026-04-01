@@ -187,9 +187,11 @@ bool App3DMainWindow::initScene() {
         0.75f,  -0.75f, 0.0f, 1.0f, 0.0f, 0.75f,  0.75f, 0.0f, 1.0f, 1.0f,
     };
 
-    if (!(vertex_buffer_ = device_->createBuffer(sizeof(vertices[0]) * vertices.size()))) { return false; }
+    if (!(vertex_buffer_ = device_->createBuffer(sizeof(vertices[0]) * vertices.size(), rel::BufferType::VERTEX))) {
+        return false;
+    }
 
-    if (!vertex_buffer_->updateBuffer(util::as_byte_span(vertices), 0)) { return false; }
+    if (!vertex_buffer_->updateVertexBuffer(util::as_byte_span(vertices), 0)) { return false; }
 
     return true;
 }
