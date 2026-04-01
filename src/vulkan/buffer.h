@@ -29,7 +29,8 @@ class Buffer : public IBuffer {
     VmaAllocation getAllocation() { return allocation_; }
 
     //@{ IBuffer
-    bool updateBuffer(std::span<const std::uint8_t> data, std::size_t offset) override;
+    bool updateVertexBuffer(std::span<const std::uint8_t> data, std::size_t offset) override;
+    bool updateConstantBuffer(std::span<const std::uint8_t> data, std::size_t offset) override;
     //@}
 
  private:

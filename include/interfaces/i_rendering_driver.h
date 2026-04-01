@@ -75,6 +75,11 @@ enum class PrimitiveTopology {
     TRIANGLE_STRIP,
 };
 
+enum class BufferType {
+    VERTEX = 0,
+    CONSTANT,
+};
+
 struct IShaderModule {
     virtual ~IShaderModule() = default;
 };
@@ -85,7 +90,8 @@ struct IPipeline {
 
 struct IBuffer {
     virtual ~IBuffer() = default;
-    virtual bool updateBuffer(std::span<const std::uint8_t> data, std::size_t offset) = 0;
+    virtual bool updateVertexBuffer(std::span<const std::uint8_t> data, std::size_t offset) = 0;
+    virtual bool updateConstantBuffer(std::span<const std::uint8_t> data, std::size_t offset) = 0;
 };
 
 struct ITexture {
@@ -100,6 +106,7 @@ struct ISampler {
 struct IDescriptorSet {
     virtual ~IDescriptorSet() = default;
     virtual void updateTextureSamplerDescriptor(ITexture& texture, ISampler& sampler) = 0;
+    virtual void updateConstantBufferDescriptor(IBuffer& buffer) = 0;
 };
 
 struct IRenderTarget {
@@ -122,7 +129,7 @@ struct IDevice {
     virtual IShaderModule* createShaderModule(std::span<const std::uint32_t> source) = 0;
     virtual IPipeline* createPipeline(IRenderTarget& render_target, std::span<IShaderModule* const> shader_modules,
                                       const uxs::db::value& config) = 0;
-    virtual IBuffer* createBuffer(std::size_t size) = 0;
+    virtual IBuffer* createBuffer(std::size_t size, BufferType type) = 0;
     virtual ITexture* createTexture(Extent3u extent) = 0;
     virtual ISampler* createSampler() = 0;
     virtual IDescriptorSet* createDescriptorSet(IPipeline& pipeline) = 0;

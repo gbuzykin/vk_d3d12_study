@@ -1,5 +1,6 @@
 #include "descriptor_set.h"
 
+#include "buffer.h"
 #include "device.h"
 #include "sampler.h"
 #include "texture.h"
@@ -41,6 +42,29 @@ void DescriptorSet::updateTextureSamplerDescriptor(ITexture& texture, ISampler& 
                 .descriptorCount = std::uint32_t(image_infos.size()),
                 .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                 .pImageInfo = image_infos.data(),
+            },
+        },
+        {});
+}
+
+void DescriptorSet::updateConstantBufferDescriptor(IBuffer& buffer) {
+    const std::array buffer_infos{
+        VkDescriptorBufferInfo{
+            .buffer = ~static_cast<Buffer&>(buffer),
+            .offset = 0,
+            .range = VK_WHOLE_SIZE,
+        },
+    };
+    device_.updateDescriptorSets(
+        std::array{
+            VkWriteDescriptorSet{
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = descriptor_set_,
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorCount = std::uint32_t(buffer_infos.size()),
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .pBufferInfo = buffer_infos.data(),
             },
         },
         {});

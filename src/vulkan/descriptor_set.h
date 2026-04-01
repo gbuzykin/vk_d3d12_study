@@ -21,6 +21,7 @@ class DescriptorSet final : public IDescriptorSet {
 
     //@{ IDescriptorSet
     void updateTextureSamplerDescriptor(ITexture& texture, ISampler& sampler) override;
+    void updateConstantBufferDescriptor(IBuffer& buffer) override;
     //@}
 
  private:
