@@ -124,6 +124,7 @@ class App3DMainWindow final : public MainWindow {
     rel::ISwapChain* swap_chain_ = nullptr;
 
     rel::IRenderTarget* render_target_ = nullptr;
+    rel::IPipelineLayout* pipeline_layout_ = nullptr;
     rel::IPipeline* pipeline_ = nullptr;
     rel::ITexture* texture_ = nullptr;
     rel::ISampler* sampler_ = nullptr;
@@ -211,6 +212,10 @@ bool App3DMainWindow::initScene() {
     auto* pixel_shader_module = device_->createShaderModule(pixel_shader_spv);
     if (!pixel_shader_module) { return false; }
 
+    const auto pipeline_layout_config = JSON({});
+
+    if (!(pipeline_layout_ = device_->createPipelineLayout(pipeline_layout_config))) { return false; }
+
     const auto pipeline_config = JSON({
         "stages" : [
             {"stage" : "VERTEX", "entry" : "main"},  //
@@ -224,8 +229,8 @@ bool App3DMainWindow::initScene() {
         } ]
     });
 
-    if (!(pipeline_ = device_->createPipeline(*render_target_, std::array{vertex_shader_module, pixel_shader_module},
-                                              pipeline_config))) {
+    if (!(pipeline_ = device_->createPipeline(*render_target_, *pipeline_layout_,
+                                              std::array{vertex_shader_module, pixel_shader_module}, pipeline_config))) {
         return false;
     }
 
@@ -240,7 +245,7 @@ bool App3DMainWindow::initScene() {
 
     if (!(sampler_ = device_->createSampler())) { return false; }
 
-    if (!(descriptor_set_ = device_->createDescriptorSet(*pipeline_))) { return false; }
+    if (!(descriptor_set_ = device_->createDescriptorSet(*pipeline_layout_))) { return false; }
     descriptor_set_->updateCombinedTextureSamplerDescriptor(*texture_, *sampler_);
 
     const std::vector<float> vertices{
@@ -268,7 +273,7 @@ bool App3DMainWindow::renderScene() {
 
     render_target_->bindPipeline(*pipeline_);
 
-    render_target_->bindDescriptorSet(*pipeline_, *descriptor_set_, 0);
+    render_target_->bindDescriptorSet(*descriptor_set_, 0);
 
     render_target_->bindVertexBuffer(*vertex_buffer_, 0, 0);
 

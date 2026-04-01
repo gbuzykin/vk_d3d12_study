@@ -7,17 +7,19 @@
 namespace app3d::rel::vulkan {
 
 class Device;
+class PipelineLayout;
 
 class DescriptorSet final : public IDescriptorSet {
  public:
-    explicit DescriptorSet(Device& device);
+    DescriptorSet(Device& device, PipelineLayout& pipeline_layout);
     ~DescriptorSet() override;
     DescriptorSet(const DescriptorSet&) = delete;
     DescriptorSet& operator=(const DescriptorSet&) = delete;
 
-    bool create(VkDescriptorSetLayout descriptor_set_layout);
+    bool create();
 
     VkDescriptorSet operator~() { return descriptor_set_; }
+    PipelineLayout& getLayout() { return pipeline_layout_; }
 
     //@{ IDescriptorSet
     void updateCombinedTextureSamplerDescriptor(ITexture& texture, ISampler& sampler) override;
@@ -26,6 +28,7 @@ class DescriptorSet final : public IDescriptorSet {
 
  private:
     Device& device_;
+    PipelineLayout& pipeline_layout_;
     VkDescriptorSet descriptor_set_{VK_NULL_HANDLE};
 };
 

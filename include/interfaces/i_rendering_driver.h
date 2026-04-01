@@ -77,6 +77,10 @@ struct IShaderModule {
     virtual ~IShaderModule() = default;
 };
 
+struct IPipelineLayout {
+    virtual ~IPipelineLayout() = default;
+};
+
 struct IPipeline {
     virtual ~IPipeline() = default;
 };
@@ -110,7 +114,7 @@ struct IRenderTarget {
     virtual void setScissor(const Rect& rect) = 0;
     virtual void bindPipeline(IPipeline& pipeline) = 0;
     virtual void bindVertexBuffer(IBuffer& buffer, std::uint32_t offset, std::uint32_t slot) = 0;
-    virtual void bindDescriptorSet(IPipeline& pipeline, IDescriptorSet& descriptor_set, std::uint32_t set_index) = 0;
+    virtual void bindDescriptorSet(IDescriptorSet& descriptor_set, std::uint32_t set_index) = 0;
     virtual void setPrimitiveTopology(PrimitiveTopology topology) = 0;
     virtual void drawGeometry(std::uint32_t vertex_count, std::uint32_t instance_count, std::uint32_t first_vertex,
                               std::uint32_t first_instance) = 0;
@@ -131,12 +135,13 @@ struct IDevice {
     virtual ~IDevice() = default;
     virtual ISwapChain* createSwapChain(ISurface& surface, const uxs::db::value& opts) = 0;
     virtual IShaderModule* createShaderModule(std::span<const std::uint32_t> source) = 0;
-    virtual IPipeline* createPipeline(IRenderTarget& render_target, std::span<IShaderModule* const> shader_modules,
-                                      const uxs::db::value& config) = 0;
+    virtual IPipelineLayout* createPipelineLayout(const uxs::db::value& config) = 0;
+    virtual IPipeline* createPipeline(IRenderTarget& render_target, IPipelineLayout& pipeline_layout,
+                                      std::span<IShaderModule* const> shader_modules, const uxs::db::value& config) = 0;
     virtual IBuffer* createBuffer(BufferType type, std::uint64_t size) = 0;
     virtual ITexture* createTexture(Extent3u extent) = 0;
     virtual ISampler* createSampler() = 0;
-    virtual IDescriptorSet* createDescriptorSet(IPipeline& pipeline) = 0;
+    virtual IDescriptorSet* createDescriptorSet(IPipelineLayout& pipeline_layout) = 0;
 };
 
 struct IRenderingDriver {

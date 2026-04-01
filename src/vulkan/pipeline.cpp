@@ -2,12 +2,13 @@
 
 #include "device.h"
 #include "object_destroyer.h"
+#include "pipeline_layout.h"
 #include "render_target.h"
 #include "shader_module.h"
+#include "tables.h"
 #include "vulkan_logger.h"
 
 #include <array>
-#include <unordered_map>
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -16,49 +17,10 @@ using namespace app3d::rel::vulkan;
 // --------------------------------------------------------
 // Pipeline class implementation
 
-Pipeline::Pipeline(Device& device) : device_(device) {}
+Pipeline::Pipeline(Device& device, PipelineLayout& pipeline_layout)
+    : device_(device), pipeline_layout_(pipeline_layout) {}
 
-Pipeline::~Pipeline() {
-    ObjectDestroyer<VkPipeline>::destroy(~device_, pipeline_);
-    ObjectDestroyer<VkPipelineLayout>::destroy(~device_, pipeline_layout_);
-    ObjectDestroyer<VkDescriptorSetLayout>::destroy(~device_, descriptor_set_layout_);
-}
-
-namespace {
-const std::unordered_map<std::string_view, VkShaderStageFlagBits> g_shader_stages{
-    {"ALL", VK_SHADER_STAGE_ALL_GRAPHICS},
-    {"VERTEX", VK_SHADER_STAGE_VERTEX_BIT},
-    {"PIXEL", VK_SHADER_STAGE_FRAGMENT_BIT},
-};
-const std::unordered_map<std::string_view, VkFormat> g_formats{
-    {"FLOAT", VK_FORMAT_R32_SFLOAT},        {"FLOAT2", VK_FORMAT_R32G32_SFLOAT},
-    {"FLOAT3", VK_FORMAT_R32G32B32_SFLOAT}, {"FLOAT4", VK_FORMAT_R32G32B32A32_SFLOAT},
-    {"BYTE4", VK_FORMAT_R8G8B8A8_UNORM},
-};
-const std::unordered_map<VkFormat, std::pair<std::uint32_t, std::uint32_t>> g_format_size_alignment{
-    {VK_FORMAT_R32_SFLOAT, {4, 4}},           {VK_FORMAT_R32G32_SFLOAT, {8, 4}},  {VK_FORMAT_R32G32B32_SFLOAT, {12, 4}},
-    {VK_FORMAT_R32G32B32A32_SFLOAT, {16, 4}}, {VK_FORMAT_R8G8B8A8_UNORM, {4, 4}},
-};
-
-VkShaderStageFlagBits parseShaderStage(std::string_view stage) {
-    auto it = g_shader_stages.find(stage);
-    if (it != g_shader_stages.end()) { return it->second; }
-    throw uxs::db::database_error("unknown shader stage");
-}
-
-VkFormat parseFormat(std::string_view fmt) {
-    auto it = g_formats.find(fmt);
-    if (it != g_formats.end()) { return it->second; }
-    throw uxs::db::database_error("unknown format");
-}
-
-std::pair<std::uint32_t, std::uint32_t> getFormatSizeAlignment(VkFormat fmt) {
-    auto it = g_format_size_alignment.find(fmt);
-    if (it != g_format_size_alignment.end()) { return it->second; }
-    logError(LOG_VK "unknown format");
-    return {0, 0};
-}
-}  // namespace
+Pipeline::~Pipeline() { ObjectDestroyer<VkPipeline>::destroy(~device_, pipeline_); }
 
 bool Pipeline::create(RenderTarget& render_target, std::span<IShaderModule* const> shader_modules,
                       const uxs::db::value& config) {
@@ -215,19 +177,6 @@ bool Pipeline::create(RenderTarget& render_target, std::span<IShaderModule* cons
         .pDynamicStates = dynamic_states.data(),
     };
 
-    if (!createDescriptorSetLayout(std::array{
-            VkDescriptorSetLayoutBinding{
-                .binding = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .descriptorCount = 1,
-                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-            },
-        })) {
-        return false;
-    }
-
-    if (!createPipelineLayout(std::array{descriptor_set_layout_}, {})) { return false; }
-
     const VkGraphicsPipelineCreateInfo graphics_pipeline_create_info{
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .stageCount = std::uint32_t(shader_stage_create_infos.size()),
@@ -240,7 +189,7 @@ bool Pipeline::create(RenderTarget& render_target, std::span<IShaderModule* cons
         .pDepthStencilState = render_target.useDepth() ? &depth_stencil_state_create_info : nullptr,
         .pColorBlendState = &blend_state_create_info,
         .pDynamicState = &dynamic_state_create_info,
-        .layout = pipeline_layout_,
+        .layout = ~pipeline_layout_,
         .renderPass = render_target.getRenderPass(),
         .basePipelineIndex = -1,
     };
@@ -258,38 +207,3 @@ bool Pipeline::create(RenderTarget& render_target, std::span<IShaderModule* cons
 //@{ IPipeline
 
 //@}
-
-bool Pipeline::createDescriptorSetLayout(std::span<const VkDescriptorSetLayoutBinding> bindings) {
-    const VkDescriptorSetLayoutCreateInfo create_info{
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .bindingCount = std::uint32_t(bindings.size()),
-        .pBindings = bindings.data(),
-    };
-
-    VkResult result = vkCreateDescriptorSetLayout(~device_, &create_info, nullptr, &descriptor_set_layout_);
-    if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't create layout for descriptor sets: {}", result);
-        return false;
-    }
-
-    return true;
-}
-
-bool Pipeline::createPipelineLayout(std::span<const VkDescriptorSetLayout> descriptor_set_layouts,
-                                    std::span<const VkPushConstantRange> push_constant_ranges) {
-    const VkPipelineLayoutCreateInfo pipeline_layout_create_info{
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount = std::uint32_t(descriptor_set_layouts.size()),
-        .pSetLayouts = descriptor_set_layouts.data(),
-        .pushConstantRangeCount = std::uint32_t(push_constant_ranges.size()),
-        .pPushConstantRanges = push_constant_ranges.data(),
-    };
-
-    VkResult result = vkCreatePipelineLayout(~device_, &pipeline_layout_create_info, nullptr, &pipeline_layout_);
-    if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't create pipeline layout: {}", result);
-        return false;
-    }
-
-    return true;
-}
