@@ -4,6 +4,10 @@
 
 #include "interfaces/i_rendering_driver.h"
 
+#include <uxs/dynarray.h>
+
+#include <array>
+
 namespace app3d::rel::vulkan {
 
 class Device;
@@ -15,18 +19,32 @@ class PipelineLayout : public IPipelineLayout {
     PipelineLayout(const PipelineLayout&) = delete;
     PipelineLayout& operator=(const PipelineLayout&) = delete;
 
+    enum class BindingType {
+        TEXTURE_SAMPLER = 0,
+        CONSTANT_BUFFER,
+        COUNT,
+    };
+
+    std::uint32_t getBinding(BindingType t, std::uint32_t slot) const { return bindings_[slot][unsigned(t)]; }
+
     bool create(const uxs::db::value& config);
 
     VkPipelineLayout operator~() { return pipeline_layout_; }
-    VkDescriptorSetLayout getDescriptorSetLayout() { return descriptor_set_layout_; }
-
-    //@{ IPipelineLayout
-    //@}
+    VkDescriptorSetLayout getDescriptorSetLayout(std::uint32_t layout_index) {
+        return descriptor_set_layouts_[layout_index];
+    }
 
  private:
     Device& device_;
-    VkDescriptorSetLayout descriptor_set_layout_{VK_NULL_HANDLE};
+    uxs::inline_dynarray<VkDescriptorSetLayout> descriptor_set_layouts_;
     VkPipelineLayout pipeline_layout_{VK_NULL_HANDLE};
+
+    uxs::inline_dynarray<std::array<std::uint32_t, unsigned(BindingType::COUNT)>> bindings_;
+
+    void setBinding(BindingType t, std::uint32_t slot, std::uint32_t binding) {
+        if (slot >= bindings_.size()) { bindings_.resize(slot + 1); }
+        bindings_[slot][unsigned(t)] = binding;
+    }
 };
 
 }  // namespace app3d::rel::vulkan

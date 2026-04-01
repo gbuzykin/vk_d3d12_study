@@ -14,8 +14,6 @@
 #include "vulkan_logger.h"
 #include "wrappers.h"
 
-#include <array>
-
 using namespace app3d;
 using namespace app3d::rel;
 using namespace app3d::rel::vulkan;

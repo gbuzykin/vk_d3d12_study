@@ -10,8 +10,6 @@
 
 #include <uxs/string_cvt.h>
 
-#include <array>
-
 using namespace app3d;
 using namespace app3d::rel;
 using namespace app3d::rel::vulkan;
@@ -52,8 +50,10 @@ bool Pipeline::create(RenderTarget& render_target, std::span<IShaderModule* cons
     const auto& vertex_layouts = config.value("vertex_layouts");
     vertex_input_binding_descriptions.reserve(vertex_layouts.size());
 
+    std::uint32_t slot = 0;
     for (const auto& layout : vertex_layouts.as_array()) {
         const std::uint32_t binding = layout.value<std::uint32_t>("binding");
+        setBinding(BindingType::VERTEX_BUFFER, slot++, binding);
 
         vertex_input_binding_descriptions.push_back(VkVertexInputBindingDescription{
             .binding = binding,
