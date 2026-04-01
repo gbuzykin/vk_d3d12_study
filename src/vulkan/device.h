@@ -11,6 +11,7 @@ namespace app3d::rel::vulkan {
 class RenderingDriver;
 class PhysicalDevice;
 class ShaderModule;
+class PipelineLayout;
 class Pipeline;
 class Buffer;
 class Texture;
@@ -59,12 +60,13 @@ class Device final : public IDevice {
 
     //@{ IDevice
     IShaderModule* createShaderModule(std::span<const std::uint32_t> source) override;
-    IPipeline* createPipeline(IRenderTarget& render_target, std::span<IShaderModule* const> shader_modules,
-                              const uxs::db::value& config) override;
+    IPipelineLayout* createPipelineLayout(const uxs::db::value& config) override;
+    IPipeline* createPipeline(IRenderTarget& render_target, IPipelineLayout& pipeline_layout,
+                              std::span<IShaderModule* const> shader_modules, const uxs::db::value& config) override;
     IBuffer* createBuffer(std::size_t size, BufferType type) override;
     ITexture* createTexture(Extent3u extent) override;
     ISampler* createSampler() override;
-    IDescriptorSet* createDescriptorSet(IPipeline& pipeline) override;
+    IDescriptorSet* createDescriptorSet(IPipelineLayout& pipeline_layout) override;
     //@}
 
  private:
@@ -80,6 +82,7 @@ class Device final : public IDevice {
     VkDescriptorPool descriptor_pool_{VK_NULL_HANDLE};
 
     std::vector<std::unique_ptr<ShaderModule>> shader_modules_;
+    std::vector<std::unique_ptr<PipelineLayout>> pipeline_layouts_;
     std::vector<std::unique_ptr<Pipeline>> pipelines_;
     std::vector<std::unique_ptr<Buffer>> buffers_;
     std::vector<std::unique_ptr<Texture>> textures_;

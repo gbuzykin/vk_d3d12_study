@@ -4,6 +4,7 @@
 #include "device.h"
 #include "object_destroyer.h"
 #include "pipeline.h"
+#include "pipeline_layout.h"
 #include "surface.h"
 #include "swap_chain.h"
 #include "vulkan_logger.h"
@@ -344,10 +345,11 @@ void RenderTarget::bindVertexBuffer(IBuffer& buffer, std::size_t offset, std::ui
     kit.command_buffer.bindVertexBuffers(binding, {std::array{~static_cast<Buffer&>(buffer)}, std::array{offset}});
 }
 
-void RenderTarget::bindDescriptorSet(IPipeline& pipeline, IDescriptorSet& descriptor_set, std::uint32_t set_index) {
+void RenderTarget::bindDescriptorSet(IDescriptorSet& descriptor_set, std::uint32_t set_index) {
     auto& kit = frame_render_kits_[n_frame_];
-    kit.command_buffer.bindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS, static_cast<Pipeline&>(pipeline).getLayout(),
-                                          set_index, std::array{~static_cast<DescriptorSet&>(descriptor_set)}, {});
+    kit.command_buffer.bindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                          ~static_cast<DescriptorSet&>(descriptor_set).getLayout(), set_index,
+                                          std::array{~static_cast<DescriptorSet&>(descriptor_set)}, {});
 }
 
 void RenderTarget::setPrimitiveTopology(PrimitiveTopology topology) {
