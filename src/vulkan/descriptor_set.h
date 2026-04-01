@@ -1,13 +1,10 @@
 #pragma once
 
-#include "vulkan_api.h"
-
-#include "interfaces/i_rendering_driver.h"
+#include "pipeline_layout.h"
 
 namespace app3d::rel::vulkan {
 
 class Device;
-class PipelineLayout;
 
 class DescriptorSet final : public IDescriptorSet {
  public:
@@ -16,20 +13,22 @@ class DescriptorSet final : public IDescriptorSet {
     DescriptorSet(const DescriptorSet&) = delete;
     DescriptorSet& operator=(const DescriptorSet&) = delete;
 
-    bool create();
+    using BindingType = PipelineLayout::BindingType;
 
-    VkDescriptorSet operator~() { return descriptor_set_; }
+    bool create(std::uint32_t set_layout_index);
+
+    VkDescriptorSet operator~() { return handle_.handle; }
     PipelineLayout& getLayout() { return pipeline_layout_; }
 
     //@{ IDescriptorSet
-    void updateCombinedTextureSamplerDescriptor(ITexture& texture, ISampler& sampler) override;
-    void updateConstantBufferDescriptor(IBuffer& buffer) override;
+    void updateCombinedTextureSamplerDescriptor(ITexture& texture, ISampler& sampler, std::uint32_t slot) override;
+    void updateConstantBufferDescriptor(IBuffer& buffer, std::uint32_t slot) override;
     //@}
 
  private:
     Device& device_;
     PipelineLayout& pipeline_layout_;
-    VkDescriptorSet descriptor_set_{VK_NULL_HANDLE};
+    PipelineLayout::DescriptorSetHandle handle_{};
 };
 
 }  // namespace app3d::rel::vulkan

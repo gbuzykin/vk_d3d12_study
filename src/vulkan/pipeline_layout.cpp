@@ -1,13 +1,13 @@
 #include "pipeline_layout.h"
 
+#include "descriptor_set.h"
 #include "device.h"
 #include "object_destroyer.h"
 #include "pipeline.h"
 #include "render_target.h"
 #include "shader_module.h"
+#include "tables.h"
 #include "vulkan_logger.h"
-
-#include <array>
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -20,49 +20,85 @@ PipelineLayout::PipelineLayout(Device& device) : device_(device) {}
 
 PipelineLayout::~PipelineLayout() {
     ObjectDestroyer<VkPipelineLayout>::destroy(~device_, pipeline_layout_);
-    ObjectDestroyer<VkDescriptorSetLayout>::destroy(~device_, descriptor_set_layout_);
+    for (const auto& set_layout : set_layouts_) {
+        ObjectDestroyer<VkDescriptorSetLayout>::destroy(~device_, set_layout);
+    }
 }
 
 bool PipelineLayout::create(const uxs::db::value& config) {
-    uxs::inline_dynarray<VkDescriptorSetLayoutBinding> set_layout_bindings;
+    const auto& descriptor_set_layouts = config.value("descriptor_set_layouts");
 
-    set_layout_bindings.emplace_back(VkDescriptorSetLayoutBinding{
-        .binding = 0,
-        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .descriptorCount = 1,
-        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-    });
+    for (const auto& layout : descriptor_set_layouts.as_array()) {
+        uxs::inline_dynarray<VkDescriptorSetLayoutBinding> bindings;
 
-    const VkDescriptorSetLayoutCreateInfo set_create_info{
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .bindingCount = std::uint32_t(set_layout_bindings.size()),
-        .pBindings = set_layout_bindings.data(),
-    };
+        const auto& list = layout.value("descriptor_list");
 
-    VkResult result = vkCreateDescriptorSetLayout(~device_, &set_create_info, nullptr, &descriptor_set_layout_);
-    if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't create layout for descriptor sets: {}", result);
-        return false;
+        std::uint32_t def_binding = 0;
+        std::array<std::uint32_t, unsigned(BindingType::TOTAL_COUNT)> next_slots{};
+
+        const std::uint32_t binding_offset = std::uint32_t(bindings_.size());
+
+        for (const auto& desc : list.as_array()) {
+            const std::uint32_t binding = desc.value_or<std::uint32_t>("binding", def_binding);
+            const auto type = parseDescriptorType(desc.value("type").as_string_view());
+            const auto binding_type = binding_types[unsigned(type)];
+            const auto vulkan_type = vulkan_desc_types[unsigned(type)];
+            const std::uint32_t slot = desc.value_or<std::uint32_t>("slot", next_slots[unsigned(binding_type)]);
+            const std::uint32_t desc_count = desc.value_or<std::uint32_t>("count", 1);
+            def_binding = binding + 1;
+
+            setBinding(binding_type, binding_offset + slot, type, binding, desc_count);
+            next_slots[unsigned(binding_type)] = slot + desc_count;
+            if (type == DescriptorType::COMBINED_TEXTURE_SAMPLER) {
+                setBinding(BindingType::SAMPLER, binding_offset + slot, type, binding, desc_count);
+                next_slots[unsigned(BindingType::SAMPLER)] = slot + desc_count;
+            }
+
+            const auto& stages = desc.value("shader_visibility");
+            const auto visibility = parseShaderStage(desc.value_or<const char*>("shader_visibility", "ALL"));
+            bindings.emplace_back(VkDescriptorSetLayoutBinding{
+                .binding = binding,
+                .descriptorType = vulkan_type,
+                .descriptorCount = desc_count,
+                .stageFlags = VkShaderStageFlags(visibility),
+            });
+        }
+
+        const VkDescriptorSetLayoutCreateInfo create_info{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .bindingCount = std::uint32_t(bindings.size()),
+            .pBindings = bindings.data(),
+        };
+
+        VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
+        VkResult result = vkCreateDescriptorSetLayout(~device_, &create_info, nullptr, &set_layout);
+        if (result != VK_SUCCESS) {
+            logError(LOG_VK "couldn't create layout for descriptor sets: {}", result);
+            return false;
+        }
+
+        set_layouts_.push_back(set_layout);
+        binding_offsets_.push_back(binding_offset);
     }
-
-    const std::array descriptor_set_layouts{descriptor_set_layout_};
-
-    uxs::inline_dynarray<VkPushConstantRange> push_constant_ranges;
 
     const VkPipelineLayoutCreateInfo create_info{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount = std::uint32_t(descriptor_set_layouts.size()),
-        .pSetLayouts = descriptor_set_layouts.data(),
-        .pushConstantRangeCount = std::uint32_t(push_constant_ranges.size()),
-        .pPushConstantRanges = push_constant_ranges.data(),
+        .setLayoutCount = std::uint32_t(set_layouts_.size()),
+        .pSetLayouts = set_layouts_.data(),
     };
 
-    result = vkCreatePipelineLayout(~device_, &create_info, nullptr, &pipeline_layout_);
+    VkResult result = vkCreatePipelineLayout(~device_, &create_info, nullptr, &pipeline_layout_);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create pipeline layout: {}", result);
         return false;
     }
 
+    return true;
+}
+
+bool PipelineLayout::obtainDescriptorSet(std::uint32_t set_layout_index, DescriptorSetHandle& handle) {
+    if (!device_.obtainDescriptorSet(set_layouts_[set_layout_index], handle.handle)) { return false; }
+    handle.bindings = &bindings_[binding_offsets_[set_layout_index]];
     return true;
 }
 

@@ -1,11 +1,8 @@
 #include "descriptor_set.h"
 
 #include "device.h"
-#include "pipeline_layout.h"
 #include "sampler.h"
 #include "texture.h"
-
-#include <array>
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -19,13 +16,14 @@ DescriptorSet::DescriptorSet(Device& device, PipelineLayout& pipeline_layout)
 
 DescriptorSet::~DescriptorSet() {}
 
-bool DescriptorSet::create() {
-    return device_.obtainDescriptorSet(pipeline_layout_.getDescriptorSetLayout(), descriptor_set_);
+bool DescriptorSet::create(std::uint32_t set_layout_index) {
+    return pipeline_layout_.obtainDescriptorSet(set_layout_index, handle_);
 }
 
 //@{ IDescriptorSet
 
-void DescriptorSet::updateCombinedTextureSamplerDescriptor(ITexture& texture, ISampler& sampler) {
+void DescriptorSet::updateCombinedTextureSamplerDescriptor(ITexture& texture, ISampler& sampler, std::uint32_t slot) {
+    const auto& binding = handle_.bindings[slot][unsigned(BindingType::SHADER_RESOURCE)];
     const std::array image_infos{
         VkDescriptorImageInfo{
             .sampler = ~static_cast<Sampler&>(sampler),
@@ -37,18 +35,19 @@ void DescriptorSet::updateCombinedTextureSamplerDescriptor(ITexture& texture, IS
         std::array{
             VkWriteDescriptorSet{
                 .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = descriptor_set_,
-                .dstBinding = 0,
-                .dstArrayElement = 0,
+                .dstSet = handle_.handle,
+                .dstBinding = binding.binding,
+                .dstArrayElement = binding.array_element,
                 .descriptorCount = std::uint32_t(image_infos.size()),
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorType = PipelineLayout::vulkan_desc_types[unsigned(binding.type)],
                 .pImageInfo = image_infos.data(),
             },
         },
         {});
 }
 
-void DescriptorSet::updateConstantBufferDescriptor(IBuffer& buffer) {
+void DescriptorSet::updateConstantBufferDescriptor(IBuffer& buffer, std::uint32_t slot) {
+    const auto& binding = handle_.bindings[slot][unsigned(BindingType::CONSTANT_BUFFER)];
     const std::array buffer_infos{
         VkDescriptorBufferInfo{
             .buffer = ~static_cast<Buffer&>(buffer),
@@ -60,11 +59,11 @@ void DescriptorSet::updateConstantBufferDescriptor(IBuffer& buffer) {
         std::array{
             VkWriteDescriptorSet{
                 .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = descriptor_set_,
-                .dstBinding = 0,
-                .dstArrayElement = 0,
+                .dstSet = handle_.handle,
+                .dstBinding = binding.binding,
+                .dstArrayElement = binding.array_element,
                 .descriptorCount = std::uint32_t(buffer_infos.size()),
-                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorType = PipelineLayout::vulkan_desc_types[unsigned(binding.type)],
                 .pBufferInfo = buffer_infos.data(),
             },
         },

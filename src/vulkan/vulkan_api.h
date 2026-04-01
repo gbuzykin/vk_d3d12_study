@@ -16,6 +16,12 @@
 #endif
 
 namespace app3d::rel::vulkan {
+
+enum class DescriptorType {
+    COMBINED_TEXTURE_SAMPLER = 0,
+    CONSTANT_BUFFER,
+};
+
 #define EXPORTED_VK_FUNCTION(name)                                 extern PFN_##name name
 #define GLOBAL_LEVEL_VK_FUNCTION(name)                             extern PFN_##name name
 #define INSTANCE_LEVEL_VK_FUNCTION(name)                           extern PFN_##name name
@@ -23,4 +29,5 @@ namespace app3d::rel::vulkan {
 #define DEVICE_LEVEL_VK_FUNCTION(name)                             extern PFN_##name name
 #define DEVICE_LEVEL_VK_FUNCTION_FROM_EXTENSION(name, extension)   extern PFN_##name name
 #include "vulkan_function_list.inl"
+
 }  // namespace app3d::rel::vulkan

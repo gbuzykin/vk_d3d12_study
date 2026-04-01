@@ -3,7 +3,6 @@
 #include "descriptor_set.h"
 #include "object_destroyer.h"
 #include "pipeline.h"
-#include "pipeline_layout.h"
 #include "render_target.h"
 #include "rendering_driver.h"
 #include "sampler.h"
@@ -13,8 +12,6 @@
 #include "texture.h"
 #include "vulkan_logger.h"
 #include "wrappers.h"
-
-#include <array>
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -513,9 +510,9 @@ ISampler* Device::createSampler() {
     return samplers_.emplace_back(std::move(sampler)).get();
 }
 
-IDescriptorSet* Device::createDescriptorSet(IPipelineLayout& pipeline_layout) {
+IDescriptorSet* Device::createDescriptorSet(IPipelineLayout& pipeline_layout, std::uint32_t set_layout_index) {
     auto descriptor_set = std::make_unique<DescriptorSet>(*this, static_cast<PipelineLayout&>(pipeline_layout));
-    if (!descriptor_set->create()) { return nullptr; }
+    if (!descriptor_set->create(set_layout_index)) { return nullptr; }
     return descriptor_sets_.emplace_back(std::move(descriptor_set)).get();
 }
 

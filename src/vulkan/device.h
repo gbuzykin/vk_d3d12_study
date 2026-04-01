@@ -67,7 +67,7 @@ class Device final : public IDevice {
     IBuffer* createBuffer(BufferType type, std::uint64_t size) override;
     ITexture* createTexture(Extent3u extent) override;
     ISampler* createSampler() override;
-    IDescriptorSet* createDescriptorSet(IPipelineLayout& pipeline_layout) override;
+    IDescriptorSet* createDescriptorSet(IPipelineLayout& pipeline_layout, std::uint32_t set_layout_index) override;
     //@}
 
  private:

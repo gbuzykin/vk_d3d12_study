@@ -101,8 +101,8 @@ struct ISampler {
 
 struct IDescriptorSet {
     virtual ~IDescriptorSet() = default;
-    virtual void updateCombinedTextureSamplerDescriptor(ITexture& texture, ISampler& sampler) = 0;
-    virtual void updateConstantBufferDescriptor(IBuffer& buffer) = 0;
+    virtual void updateCombinedTextureSamplerDescriptor(ITexture& texture, ISampler& sampler, std::uint32_t slot) = 0;
+    virtual void updateConstantBufferDescriptor(IBuffer& buffer, std::uint32_t slot) = 0;
 };
 
 struct IRenderTarget {
@@ -141,7 +141,7 @@ struct IDevice {
     virtual IBuffer* createBuffer(BufferType type, std::uint64_t size) = 0;
     virtual ITexture* createTexture(Extent3u extent) = 0;
     virtual ISampler* createSampler() = 0;
-    virtual IDescriptorSet* createDescriptorSet(IPipelineLayout& pipeline_layout) = 0;
+    virtual IDescriptorSet* createDescriptorSet(IPipelineLayout& pipeline_layout, std::uint32_t set_layout_index) = 0;
 };
 
 struct IRenderingDriver {

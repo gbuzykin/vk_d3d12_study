@@ -4,13 +4,10 @@
 #include "device.h"
 #include "object_destroyer.h"
 #include "pipeline.h"
-#include "pipeline_layout.h"
 #include "surface.h"
 #include "swap_chain.h"
 #include "vulkan_logger.h"
 #include "wrappers.h"
-
-#include <array>
 
 using namespace app3d;
 using namespace app3d::rel;
