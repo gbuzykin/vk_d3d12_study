@@ -46,4 +46,27 @@ void DescriptorSet::updateCombinedTextureSamplerDescriptor(ITexture& texture, IS
         {});
 }
 
+void DescriptorSet::updateConstantBufferDescriptor(IBuffer& buffer) {
+    const std::array buffer_infos{
+        VkDescriptorBufferInfo{
+            .buffer = ~static_cast<Buffer&>(buffer),
+            .offset = 0,
+            .range = VK_WHOLE_SIZE,
+        },
+    };
+    device_.updateDescriptorSets(
+        std::array{
+            VkWriteDescriptorSet{
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = descriptor_set_,
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorCount = std::uint32_t(buffer_infos.size()),
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .pBufferInfo = buffer_infos.data(),
+            },
+        },
+        {});
+}
+
 //@}

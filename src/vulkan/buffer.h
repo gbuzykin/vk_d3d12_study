@@ -23,7 +23,7 @@ class Buffer : public IBuffer {
 
     VkDeviceSize getSize() const { return size_; }
 
-    bool create(VkDeviceSize size, VkBufferUsageFlags usage, bool host_access = false);
+    bool create(BufferType type, VkDeviceSize size, bool host_access = false);
 
     VkBuffer operator~() { return buffer_; }
     VmaAllocation getAllocation() { return allocation_; }
@@ -34,6 +34,7 @@ class Buffer : public IBuffer {
 
  private:
     Device& device_;
+    BufferType type_{};
     VkDeviceSize size_ = 0;
     VkBuffer buffer_{VK_NULL_HANDLE};
     VmaAllocation allocation_{VK_NULL_HANDLE};

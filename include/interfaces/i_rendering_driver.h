@@ -68,6 +68,11 @@ enum class PrimitiveTopology {
     TRIANGLE_STRIP,
 };
 
+enum class BufferType {
+    VERTEX = 0,
+    CONSTANT,
+};
+
 struct IShaderModule {
     virtual ~IShaderModule() = default;
 };
@@ -93,6 +98,7 @@ struct ISampler {
 struct IDescriptorSet {
     virtual ~IDescriptorSet() = default;
     virtual void updateCombinedTextureSamplerDescriptor(ITexture& texture, ISampler& sampler) = 0;
+    virtual void updateConstantBufferDescriptor(IBuffer& buffer) = 0;
 };
 
 struct IRenderTarget {
@@ -127,7 +133,7 @@ struct IDevice {
     virtual IShaderModule* createShaderModule(std::span<const std::uint32_t> source) = 0;
     virtual IPipeline* createPipeline(IRenderTarget& render_target, std::span<IShaderModule* const> shader_modules,
                                       const uxs::db::value& config) = 0;
-    virtual IBuffer* createBuffer(std::uint64_t size) = 0;
+    virtual IBuffer* createBuffer(BufferType type, std::uint64_t size) = 0;
     virtual ITexture* createTexture(Extent3u extent) = 0;
     virtual ISampler* createSampler() = 0;
     virtual IDescriptorSet* createDescriptorSet(IPipeline& pipeline) = 0;

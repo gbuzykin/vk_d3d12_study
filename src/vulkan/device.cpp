@@ -221,7 +221,11 @@ bool Device::create(const uxs::db::value& caps) {
                               std::array{
                                   VkDescriptorPoolSize{
                                       .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                                      .descriptorCount = 8,
+                                      .descriptorCount = 4,
+                                  },
+                                  VkDescriptorPoolSize{
+                                      .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                                      .descriptorCount = 4,
                                   },
                               },
                               descriptor_pool_)) {
@@ -331,7 +335,7 @@ bool Device::updateBuffer(const void* data, VkDeviceSize data_size, VkBuffer dst
     if (!waitForFences(std::array{kit.fence}, VK_FALSE, FINISH_TRANSFER_TIMEOUT)) { return false; }
 
     if (kit.staging_buffer.getSize() < data_size) {
-        if (!kit.staging_buffer.create(data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, true)) { return false; }
+        if (!kit.staging_buffer.create({}, data_size, true)) { return false; }
     }
 
     VkResult result = vmaCopyMemoryToAllocation(allocator_, data, kit.staging_buffer.getAllocation(), 0, data_size);
@@ -392,7 +396,7 @@ bool Device::updateImage(const void* data, VkDeviceSize data_size, VkImage dst,
     if (!waitForFences(std::array{kit.fence}, VK_FALSE, FINISH_TRANSFER_TIMEOUT)) { return false; }
 
     if (kit.staging_buffer.getSize() < data_size) {
-        if (!kit.staging_buffer.create(data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, true)) { return false; }
+        if (!kit.staging_buffer.create({}, data_size, true)) { return false; }
     }
 
     VkResult result = vmaCopyMemoryToAllocation(allocator_, data, kit.staging_buffer.getAllocation(), 0, data_size);
@@ -473,11 +477,9 @@ IPipeline* Device::createPipeline(IRenderTarget& render_target, std::span<IShade
     return pipelines_.emplace_back(std::move(pipeline)).get();
 }
 
-IBuffer* Device::createBuffer(std::uint64_t size) {
+IBuffer* Device::createBuffer(BufferType type, std::uint64_t size) {
     auto buffer = std::make_unique<Buffer>(*this);
-    if (!buffer->create(VkDeviceSize(size), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT)) {
-        return nullptr;
-    }
+    if (!buffer->create(type, VkDeviceSize(size))) { return nullptr; }
     return buffers_.emplace_back(std::move(buffer)).get();
 }
 

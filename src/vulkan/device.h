@@ -62,7 +62,7 @@ class Device final : public IDevice {
     IShaderModule* createShaderModule(std::span<const std::uint32_t> source) override;
     IPipeline* createPipeline(IRenderTarget& render_target, std::span<IShaderModule* const> shader_modules,
                               const uxs::db::value& config) override;
-    IBuffer* createBuffer(std::uint64_t size) override;
+    IBuffer* createBuffer(BufferType type, std::uint64_t size) override;
     ITexture* createTexture(Extent3u extent) override;
     ISampler* createSampler() override;
     IDescriptorSet* createDescriptorSet(IPipeline& pipeline) override;
