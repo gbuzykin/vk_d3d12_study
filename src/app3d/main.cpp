@@ -1,11 +1,14 @@
 #include "image_loader.h"
 #include "main_window.h"
+#include "model_loader.h"
 
 #include "common/dynamic_library.h"
 #include "common/logger.h"
+#include "rel/camera.h"
 #include "util/range_helpers.h"
 
 #include <uxs/db/json.h>
+#include <uxs/dynarray.h>
 #include <uxs/io/filebuf.h>
 #include <uxs/io/iostate.h>
 
@@ -14,6 +17,11 @@
 #include <exception>
 
 using namespace app3d;
+
+struct CB0 {
+    rel::Mat4f mvp;
+    rel::Mat3f mv;
+};
 
 class App3DMainWindow final : public MainWindow {
  public:
@@ -33,11 +41,15 @@ class App3DMainWindow final : public MainWindow {
                     return false;
                 }
                 recreate_swap_chain_scheduled_ = false;
+                viewport_extent_ = render_target_->getImageExtent();
             } else {
                 return true;
             }
         }
 
+        const double time = std::chrono::duration<float>(time_now - time_start_).count();
+        delta_time_ = time - current_time_;
+        current_time_ = time;
         if (!renderScene()) {
             ret_code = -1;
             return false;
@@ -58,11 +70,34 @@ class App3DMainWindow final : public MainWindow {
         return true;
     }
 
+    void onMouseButtonEvent(KeyCode button, bool state, std::int32_t x, std::int32_t y) override {
+        if (button != KeyCode::MOUSE_LBUTTON) { return; }
+        if (state) {
+            manip_.startDragging({float(x - .5f * viewport_extent_.width) / viewport_extent_.height,
+                                  float(.5f * viewport_extent_.height - y) / viewport_extent_.height});
+        } else {
+            manip_.stopDragging();
+        }
+    }
+
+    void onMouseMove(std::int32_t x, std::int32_t y, std::uint8_t button_mask) override {
+        manip_.drag({float(x - .5f * viewport_extent_.width) / viewport_extent_.height,
+                     float(.5f * viewport_extent_.height - y) / viewport_extent_.height});
+    }
+
+    void onMouseWheel(float distance, std::int32_t x, std::int32_t y, std::uint8_t button_mask) override {
+        manip_.move(.2f * distance);
+    }
+
  private:
     std::uint64_t frame_counter_ = 0;
+    std::chrono::high_resolution_clock::time_point time_start_{};
     std::chrono::high_resolution_clock::time_point time_fps_last_{};
     std::chrono::high_resolution_clock::time_point recreate_swap_chain_timer_start_{};
     bool recreate_swap_chain_scheduled_ = false;
+    rel::Extent2u viewport_extent_{};
+    float current_time_ = 0;
+    float delta_time_ = 0;
 
     util::ref_ptr<rel::IRenderingDriver> driver_;
     util::ref_ptr<rel::ISurface> surface_;
@@ -83,12 +118,26 @@ class App3DMainWindow final : public MainWindow {
     util::ref_ptr<rel::IDescriptorSet> descriptor_set_;
     util::ref_ptr<rel::IBuffer> vertex_buffer_;
 
+    struct FrameData {
+        util::ref_ptr<rel::IBuffer> cbuffer0_;
+        CB0 cb0_;
+    };
+
+    std::uint32_t n_frame_ = 0;
+    uxs::inline_dynarray<FrameData, 3> frame_data_;
+
+    Image image_;
+    Model model_;
+    rel::Camera camera_;
+    rel::OrbitCameraManipulator manip_{camera_};
+
     void scheduleRecreateSwapChain() {
         recreate_swap_chain_timer_start_ = std::chrono::high_resolution_clock::now();
         recreate_swap_chain_scheduled_ = true;
     }
 
     bool initScene();
+    void updateMatrices(CB0& cb0);
     bool renderScene();
 };
 
@@ -129,24 +178,26 @@ int App3DMainWindow::init(int argc, char** argv) {
     if (!(swap_chain_ = surface_->createSwapChain(*device_, swap_chain_opts_))) { return -1; }
 
     if (!(render_target_ = swap_chain_->createRenderTarget(JSON({"use_depth" : true})))) { return -1; }
+    viewport_extent_ = render_target_->getImageExtent();
 
     if (!initScene()) { return -1; }
 
     showWindow();
-    time_fps_last_ = std::chrono::high_resolution_clock::now();
+    time_start_ = std::chrono::high_resolution_clock::now();
+    time_fps_last_ = time_start_;
     return 0;
 }
 
 bool App3DMainWindow::initScene() {
     std::vector<std::uint32_t> vertex_shader_spv;
-    if (uxs::bfilebuf ifile("data/shaders/sampler/vert.spv", "r"); ifile) {
+    if (uxs::bfilebuf ifile("data/shaders/transform/vert.spv", "r"); ifile) {
         vertex_shader_spv.resize(ifile.seek(0, uxs::seekdir::end) / sizeof(std::uint32_t));
         ifile.seek(0);
         ifile.read(util::as_byte_span(vertex_shader_spv));
     }
 
     std::vector<std::uint32_t> pixel_shader_spv;
-    if (uxs::bfilebuf ifile("data/shaders/sampler/pix.spv", "r"); ifile) {
+    if (uxs::bfilebuf ifile("data/shaders/transform/pix.spv", "r"); ifile) {
         pixel_shader_spv.resize(ifile.seek(0, uxs::seekdir::end) / sizeof(std::uint32_t));
         ifile.seek(0);
         ifile.read(util::as_byte_span(pixel_shader_spv));
@@ -176,8 +227,12 @@ bool App3DMainWindow::initScene() {
         ],
         "vertex_layouts" : [ {
             "binding" : 0,
-            "stride" : 20,
-            "attributes" : {"0" : {"format" : "float3", "offset" : 0}, "1" : {"format" : "float2", "offset" : 12}}
+            "stride" : 32,
+            "attributes" : {
+                "0" : {"format" : "float3", "offset" : 0},
+                "1" : {"format" : "float3", "offset" : 12},
+                "2" : {"format" : "float2", "offset" : 24}
+            }
         } ]
     });
 
@@ -187,16 +242,17 @@ bool App3DMainWindow::initScene() {
         return false;
     }
 
-    Image image;
-    if (!loadImageFromFile("data/images/sunset.jpg", image, 4)) { return false; }
+    if (!loadImageFromFile("data/images/sunset.jpg", image_, 4)) { return false; }
 
     const rel::TextureOpts texture_opts{
-        .extent = {.width = image.width, .height = image.height, .depth = 1},
+        .extent = {.width = image_.width, .height = image_.height, .depth = 1},
     };
 
     if (!(texture_ = device_->createTexture(texture_opts))) { return false; }
 
-    if (!texture_->updateTexture(image.data, {}, texture_opts.extent)) { return false; }
+    if (!texture_->updateTexture(image_.data, {}, texture_opts.extent)) { return false; }
+
+    if (!(descriptor_set_ = device_->createDescriptorSet(*pipeline_layout_))) { return false; }
 
     if (!(sampler_ = device_->createSampler(rel::SamplerOpts{
               .filter = rel::SamplerFilter::MIN_MAG_LINEAR_MIP_POINT,
@@ -205,25 +261,40 @@ bool App3DMainWindow::initScene() {
           }))) {
         return false;
     }
-
-    if (!(descriptor_set_ = device_->createDescriptorSet(*pipeline_layout_))) { return false; }
     descriptor_set_->updateTextureSamplerDescriptor(*texture_, *sampler_, 0);
 
-    const std::vector<float> vertices{
-        -0.75f, -0.75f, 0.0f, 0.0f, 0.0f, -0.75f, 0.75f, 0.0f, 0.0f, 1.0f,
-        0.75f,  -0.75f, 0.0f, 1.0f, 0.0f, 0.75f,  0.75f, 0.0f, 1.0f, 1.0f,
-    };
+    frame_data_.resize(render_target_->getFifCount());
+    for (auto& frame : frame_data_) {
+        if (!(frame.cbuffer0_ = device_->createBuffer(sizeof(frame.cb0_), rel::BufferType::CONSTANT))) { return false; }
+    }
 
-    if (!(vertex_buffer_ = device_->createBuffer(sizeof(vertices[0]) * vertices.size(), rel::BufferType::VERTEX))) {
+    if (!loadModelFromObjFile("data/models/knot.obj",
+                              LoadModelFlags::LOAD_NORMALS | LoadModelFlags::LOAD_TEXCOORDS | LoadModelFlags::UNIFY,
+                              model_)) {
         return false;
     }
 
-    if (!vertex_buffer_->updateVertexBuffer(util::as_byte_span(vertices), 0)) { return false; }
+    if (!(vertex_buffer_ = device_->createBuffer(util::as_byte_span(model_.data).size(), rel::BufferType::VERTEX))) {
+        return false;
+    }
+
+    if (!vertex_buffer_->updateVertexBuffer(util::as_byte_span(model_.data), 0)) { return false; }
 
     return true;
 }
 
+void App3DMainWindow::updateMatrices(CB0& cb0) {
+    const auto m = rel::Mat4f::identity();
+    const auto mv = m * rel::Mat4f::lookAt(camera_.eye, camera_.center, camera_.up);
+    const auto p = rel::Mat4f::perspective(float(viewport_extent_.width) / viewport_extent_.height, 50.0f, 0.5f, 50.0f);
+    cb0.mv = rel::Mat3f(mv);
+    cb0.mvp = mv * p;
+}
+
 bool App3DMainWindow::renderScene() {
+    auto& frame = frame_data_[n_frame_++];
+    if (n_frame_ == frame_data_.size()) { n_frame_ = 0; }
+
     const auto result = render_target_->beginRenderTarget({0.1f, 0.2f, 0.3f, 1.0f}, 1.0f, 0);
     if (result == rel::RenderTargetResult::SUBOPTIMAL || result == rel::RenderTargetResult::OUT_OF_DATE) {
         scheduleRecreateSwapChain();
@@ -234,19 +305,18 @@ bool App3DMainWindow::renderScene() {
 
     render_target_->bindPipeline(*pipeline_);
 
-    const auto image_extent = render_target_->getImageExtent();
-
-    render_target_->setViewport(rel::Rect{.extent = image_extent}, 0.0f, 1.0f);
-
-    render_target_->setScissor(rel::Rect{.extent = image_extent});
-
-    render_target_->bindDescriptorSet(*descriptor_set_, 0);
+    render_target_->setViewport(rel::Rect{.extent = viewport_extent_}, 0.0f, 1.0f);
+    render_target_->setScissor(rel::Rect{.extent = viewport_extent_});
 
     render_target_->bindVertexBuffer(*vertex_buffer_, 0, 0);
+    render_target_->bindDescriptorSet(*descriptor_set_, 0);
+    descriptor_set_->updateConstantBufferDescriptor(*frame.cbuffer0_, 0);
 
-    render_target_->setPrimitiveTopology(rel::PrimitiveTopology::TRIANGLE_STRIP);
+    render_target_->setPrimitiveTopology(rel::PrimitiveTopology::TRIANGLES);
+    for (const auto& part : model_.parts) { render_target_->drawGeometry(part.count, 1, part.offset, 0); }
 
-    render_target_->drawGeometry(4, 1, 0, 0);
+    updateMatrices(frame.cb0_);
+    if (!frame.cbuffer0_->updateConstantBuffer(util::as_byte_span(std::span{&frame.cb0_, 1}), 0)) { return false; }
 
     if (!render_target_->endRenderTarget()) { return false; }
 
