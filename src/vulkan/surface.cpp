@@ -13,9 +13,12 @@ using namespace app3d::rel::vulkan;
 // --------------------------------------------------------
 // Surface class implementation
 
-Surface::Surface(RenderingDriver& instance) : instance_(instance) {}
+Surface::Surface(RenderingDriver& instance) : instance_(util::not_null{&instance}) {}
 
-Surface::~Surface() { ObjectDestroyer<VkSurfaceKHR>::destroy(~instance_, surface_); }
+Surface::~Surface() {
+    instance_->removeSurface(this);
+    ObjectDestroyer<VkSurfaceKHR>::destroy(~*instance_, surface_);
+}
 
 std::uint32_t Surface::getPresentQueueFamily(std::uint32_t n) const {
     return n < present_queue_families_.size() ? present_queue_families_[n] : INVALID_UINT32_VALUE;
@@ -40,7 +43,7 @@ bool Surface::create(const WindowDescriptor& win_desc) {
                 .hinstance = win_desc_impl.hinstance,
                 .hwnd = win_desc_impl.hwnd,
             };
-            result = vkCreateWin32SurfaceKHR(~instance_, &create_info, nullptr, &surface_);
+            result = vkCreateWin32SurfaceKHR(~*instance_, &create_info, nullptr, &surface_);
         } break;
 #endif
 #ifdef VK_USE_PLATFORM_XLIB_KHR
@@ -58,7 +61,7 @@ bool Surface::create(const WindowDescriptor& win_desc) {
                 .dpy = win_desc_impl.dpy,
                 .window = win_desc_impl.window,
             };
-            result = vkCreateXlibSurfaceKHR(~instance_, &create_info, nullptr, &surface_);
+            result = vkCreateXlibSurfaceKHR(~*instance_, &create_info, nullptr, &surface_);
         } break;
 #endif
 #ifdef VK_USE_PLATFORM_XCB_KHR
@@ -76,7 +79,7 @@ bool Surface::create(const WindowDescriptor& win_desc) {
                 .connection = win_desc_impl.connection,
                 .window = win_desc_impl.window,
             };
-            result = vkCreateXcbSurfaceKHR(~instance_, &create_info, nullptr, &surface_);
+            result = vkCreateXcbSurfaceKHR(~*instance_, &create_info, nullptr, &surface_);
         } break;
 #endif
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
@@ -94,7 +97,7 @@ bool Surface::create(const WindowDescriptor& win_desc) {
                 .display = win_desc_impl.display,
                 .surface = win_desc_impl.surface,
             };
-            result = vkCreateWaylandSurfaceKHR(~instance_, &create_info, nullptr, &surface_);
+            result = vkCreateWaylandSurfaceKHR(~*instance_, &create_info, nullptr, &surface_);
         } break;
 #endif
         default: {

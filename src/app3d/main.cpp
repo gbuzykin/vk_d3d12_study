@@ -52,6 +52,10 @@ class Timer {
 
 class App3DMainWindow final : public MainWindow {
  public:
+    ~App3DMainWindow() {
+        if (device_) { device_->waitDevice(); }
+    }
+
     int init(int argc, char** argv);
 
     void onIdle() override {
@@ -114,22 +118,24 @@ class App3DMainWindow final : public MainWindow {
     bool is_window_sizing_or_moving_ = false;
     rel::Extent2u viewport_extent_{};
 
-    std::unique_ptr<rel::IRenderingDriver> driver_;
-    rel::ISurface* surface_ = nullptr;
+    util::ref_ptr<rel::IRenderingDriver> driver_;
+    util::ref_ptr<rel::ISurface> surface_;
 
     uxs::db::value device_caps_;
-    rel::IDevice* device_ = nullptr;
+    util::ref_ptr<rel::IDevice> device_;
 
     uxs::db::value swap_chain_opts_;
-    rel::ISwapChain* swap_chain_ = nullptr;
+    util::ref_ptr<rel::ISwapChain> swap_chain_;
 
-    rel::IRenderTarget* render_target_ = nullptr;
-    rel::IPipelineLayout* pipeline_layout_ = nullptr;
-    rel::IPipeline* pipeline_ = nullptr;
-    rel::ITexture* texture_ = nullptr;
-    rel::ISampler* sampler_ = nullptr;
-    rel::IDescriptorSet* descriptor_set_ = nullptr;
-    rel::IBuffer* vertex_buffer_ = nullptr;
+    util::ref_ptr<rel::IRenderTarget> render_target_;
+    util::ref_ptr<rel::IShaderModule> vertex_shader_module_;
+    util::ref_ptr<rel::IShaderModule> pixel_shader_module_;
+    util::ref_ptr<rel::IPipelineLayout> pipeline_layout_;
+    util::ref_ptr<rel::IPipeline> pipeline_;
+    util::ref_ptr<rel::ITexture> texture_;
+    util::ref_ptr<rel::ISampler> sampler_;
+    util::ref_ptr<rel::IDescriptorSet> descriptor_set_;
+    util::ref_ptr<rel::IBuffer> vertex_buffer_;
 
     bool needToSuspendTime() const { return is_window_minimized_ || is_window_sizing_or_moving_; }
 
@@ -168,6 +174,7 @@ int App3DMainWindow::init(int argc, char** argv) {
     device_caps_ = JSON({"needs_compute" : true});
 
     for (device_index = 0; device_index < device_count; ++device_index) {
+        logInfo("device #{}: {}", device_index, driver_->getPhysicalDeviceName(device_index));
         if (driver_->isSuitablePhysicalDevice(device_index, device_caps_)) { break; }
     }
 
@@ -175,6 +182,8 @@ int App3DMainWindow::init(int argc, char** argv) {
         logError("no suitable physical device");
         return -1;
     }
+
+    logInfo("selecting device #{}", device_index);
 
     if (!(device_ = driver_->createDevice(device_index, device_caps_))) { return -1; }
 
@@ -206,11 +215,11 @@ bool App3DMainWindow::initScene() {
         ifile.read(util::as_byte_span(pixel_shader_spv));
     }
 
-    auto* vertex_shader_module = device_->createShaderModule(vertex_shader_spv);
-    if (!vertex_shader_module) { return false; }
+    vertex_shader_module_ = device_->createShaderModule(vertex_shader_spv);
+    if (!vertex_shader_module_) { return false; }
 
-    auto* pixel_shader_module = device_->createShaderModule(pixel_shader_spv);
-    if (!pixel_shader_module) { return false; }
+    pixel_shader_module_ = device_->createShaderModule(pixel_shader_spv);
+    if (!pixel_shader_module_) { return false; }
 
     const auto pipeline_layout_config = JSON({
         "descriptor_set_layouts" : [ {
@@ -237,7 +246,8 @@ bool App3DMainWindow::initScene() {
     });
 
     if (!(pipeline_ = device_->createPipeline(*render_target_, *pipeline_layout_,
-                                              std::array{vertex_shader_module, pixel_shader_module}, pipeline_config))) {
+                                              std::array{vertex_shader_module_.get(), pixel_shader_module_.get()},
+                                              pipeline_config))) {
         return false;
     }
 
@@ -252,7 +262,7 @@ bool App3DMainWindow::initScene() {
 
     if (!(sampler_ = device_->createSampler())) { return false; }
 
-    if (!(descriptor_set_ = device_->createDescriptorSet(*pipeline_layout_, 0))) { return false; }
+    if (!(descriptor_set_ = pipeline_layout_->createDescriptorSet(0))) { return false; }
     descriptor_set_->updateCombinedTextureSamplerDescriptor(*texture_, *sampler_, 0);
 
     const std::vector<float> vertices{

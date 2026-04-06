@@ -11,9 +11,9 @@ using namespace app3d::rel::vulkan;
 // --------------------------------------------------------
 // Sampler class implementation
 
-Sampler::Sampler(Device& device) : device_(device) {}
+Sampler::Sampler(Device& device) : device_(util::not_null{&device}) {}
 
-Sampler::~Sampler() { ObjectDestroyer<VkSampler>::destroy(~device_, sampler_); }
+Sampler::~Sampler() { ObjectDestroyer<VkSampler>::destroy(~*device_, sampler_); }
 
 bool Sampler::create(VkFilter mag_filter, VkFilter min_filter, VkSamplerMipmapMode mipmap_mode,
                      VkSamplerAddressMode u_address_mode, VkSamplerAddressMode v_address_mode,
@@ -39,7 +39,7 @@ bool Sampler::create(VkFilter mag_filter, VkFilter min_filter, VkSamplerMipmapMo
         .unnormalizedCoordinates = unnormalized_coords,
     };
 
-    VkResult result = vkCreateSampler(~device_, &create_info, nullptr, &sampler_);
+    VkResult result = vkCreateSampler(~*device_, &create_info, nullptr, &sampler_);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create sampler: {}", result);
         return false;

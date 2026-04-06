@@ -7,28 +7,27 @@
 namespace app3d::rel::vulkan {
 
 class Device;
-class PipelineLayout;
 class RenderTarget;
+class PipelineLayout;
 
-class Pipeline final : public IPipeline {
+class Pipeline final : public util::ref_counter, public IPipeline {
  public:
-    Pipeline(Device& device, PipelineLayout& pipeline_layout);
+    Pipeline(Device& device, RenderTarget& render_target, PipelineLayout& pipeline_layout);
     ~Pipeline() override;
-    Pipeline(const Pipeline&) = delete;
-    Pipeline& operator=(const Pipeline&) = delete;
 
-    bool create(RenderTarget& render_target, std::span<IShaderModule* const> shader_modules,
-                const uxs::db::value& config);
+    bool create(std::span<IShaderModule* const> shader_modules, const uxs::db::value& config);
 
     VkPipeline operator~() { return pipeline_; }
-    PipelineLayout& getLayout() { return pipeline_layout_; }
+    PipelineLayout& getLayout() { return *pipeline_layout_; }
 
     //@{ IPipeline
+    util::ref_counter& getRefCounter() override { return *this; }
     //@}
 
  private:
-    Device& device_;
-    PipelineLayout& pipeline_layout_;
+    util::ref_ptr<Device> device_;
+    util::ref_ptr<RenderTarget> render_target_;
+    util::ref_ptr<PipelineLayout> pipeline_layout_;
     VkPipeline pipeline_{VK_NULL_HANDLE};
 };
 

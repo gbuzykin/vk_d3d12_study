@@ -12,12 +12,12 @@ using namespace app3d::rel::vulkan;
 // DescriptorSet class implementation
 
 DescriptorSet::DescriptorSet(Device& device, PipelineLayout& pipeline_layout)
-    : device_(device), pipeline_layout_(pipeline_layout) {}
+    : device_(util::not_null{&device}), pipeline_layout_(util::not_null{&pipeline_layout}) {}
 
 DescriptorSet::~DescriptorSet() {}
 
 bool DescriptorSet::create(std::uint32_t set_layout_index) {
-    return pipeline_layout_.obtainDescriptorSet(set_layout_index, handle_);
+    return pipeline_layout_->obtainDescriptorSet(set_layout_index, handle_);
 }
 
 //@{ IDescriptorSet
@@ -31,7 +31,7 @@ void DescriptorSet::updateCombinedTextureSamplerDescriptor(ITexture& texture, IS
             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         },
     };
-    device_.updateDescriptorSets(
+    device_->updateDescriptorSets(
         std::array{
             VkWriteDescriptorSet{
                 .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -55,7 +55,7 @@ void DescriptorSet::updateConstantBufferDescriptor(IBuffer& buffer, std::uint32_
             .range = VK_WHOLE_SIZE,
         },
     };
-    device_.updateDescriptorSets(
+    device_->updateDescriptorSets(
         std::array{
             VkWriteDescriptorSet{
                 .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,

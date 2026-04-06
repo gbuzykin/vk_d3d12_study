@@ -6,9 +6,10 @@
 
 namespace app3d::rel::vulkan {
 
+class RenderTarget;
 class CommandBuffer;
 
-class FrameImageProvider {
+class FrameImageProvider : public util::ref_counter {
  public:
     virtual VkImageView getImageView(std::uint32_t image_index) = 0;
     virtual std::uint32_t getImageCount() const = 0;
@@ -24,6 +25,7 @@ class FrameImageProvider {
                                                  std::uint32_t& image_index) = 0;
     virtual RenderTargetResult submitFrameImage(std::uint32_t n_frame, std::uint32_t image_index,
                                                 CommandBuffer& command_buffer, VkFence fence) = 0;
+    virtual void removeRenderTarget(RenderTarget* render_target) = 0;
 };
 
 }  // namespace app3d::rel::vulkan

@@ -8,12 +8,10 @@ namespace app3d::rel::vulkan {
 
 class Device;
 
-class Sampler final : public ISampler {
+class Sampler final : public util::ref_counter, public ISampler {
  public:
     explicit Sampler(Device& device);
     ~Sampler() override;
-    Sampler(const Sampler&) = delete;
-    Sampler& operator=(const Sampler&) = delete;
 
     bool create(VkFilter mag_filter, VkFilter min_filter, VkSamplerMipmapMode mipmap_mode,
                 VkSamplerAddressMode u_address_mode, VkSamplerAddressMode v_address_mode,
@@ -24,10 +22,11 @@ class Sampler final : public ISampler {
     VkSampler operator~() { return sampler_; }
 
     //@{ ISampler
+    util::ref_counter& getRefCounter() override { return *this; }
     //@}
 
  private:
-    Device& device_;
+    util::ref_ptr<Device> device_;
     VkSampler sampler_{VK_NULL_HANDLE};
 };
 

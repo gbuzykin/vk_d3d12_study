@@ -16,12 +16,12 @@ using namespace app3d::rel::vulkan;
 // --------------------------------------------------------
 // PipelineLayout class implementation
 
-PipelineLayout::PipelineLayout(Device& device) : device_(device) {}
+PipelineLayout::PipelineLayout(Device& device) : device_(util::not_null(&device)) {}
 
 PipelineLayout::~PipelineLayout() {
-    ObjectDestroyer<VkPipelineLayout>::destroy(~device_, pipeline_layout_);
+    ObjectDestroyer<VkPipelineLayout>::destroy(~*device_, pipeline_layout_);
     for (const auto& set_layout : set_layouts_) {
-        ObjectDestroyer<VkDescriptorSetLayout>::destroy(~device_, set_layout);
+        ObjectDestroyer<VkDescriptorSetLayout>::destroy(~*device_, set_layout);
     }
 }
 
@@ -71,7 +71,7 @@ bool PipelineLayout::create(const uxs::db::value& config) {
         };
 
         VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
-        VkResult result = vkCreateDescriptorSetLayout(~device_, &create_info, nullptr, &set_layout);
+        VkResult result = vkCreateDescriptorSetLayout(~*device_, &create_info, nullptr, &set_layout);
         if (result != VK_SUCCESS) {
             logError(LOG_VK "couldn't create layout for descriptor sets: {}", result);
             return false;
@@ -87,7 +87,7 @@ bool PipelineLayout::create(const uxs::db::value& config) {
         .pSetLayouts = set_layouts_.data(),
     };
 
-    VkResult result = vkCreatePipelineLayout(~device_, &create_info, nullptr, &pipeline_layout_);
+    VkResult result = vkCreatePipelineLayout(~*device_, &create_info, nullptr, &pipeline_layout_);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create pipeline layout: {}", result);
         return false;
@@ -97,11 +97,17 @@ bool PipelineLayout::create(const uxs::db::value& config) {
 }
 
 bool PipelineLayout::obtainDescriptorSet(std::uint32_t set_layout_index, DescriptorSetHandle& handle) {
-    if (!device_.obtainDescriptorSet(set_layouts_[set_layout_index], handle.handle)) { return false; }
+    if (!device_->obtainDescriptorSet(set_layouts_[set_layout_index], handle.handle)) { return false; }
     handle.bindings = &bindings_[binding_offsets_[set_layout_index]];
     return true;
 }
 
 //@{ IPipelineLayout
+
+util::ref_ptr<IDescriptorSet> PipelineLayout::createDescriptorSet(std::uint32_t set_layout_index) {
+    auto descriptor_set = util::make_new<DescriptorSet>(*device_, *this);
+    if (!descriptor_set->create(set_layout_index)) { return nullptr; }
+    return std::move(descriptor_set);
+}
 
 //@}

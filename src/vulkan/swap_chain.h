@@ -9,15 +9,11 @@ namespace app3d::rel::vulkan {
 
 class Device;
 class Surface;
-class RenderTarget;
-class CommandBuffer;
 
 class SwapChain final : public FrameImageProvider, public ISwapChain {
  public:
     SwapChain(Device& device, Surface& surface);
     ~SwapChain() override;
-    SwapChain(const SwapChain&) = delete;
-    SwapChain& operator=(const SwapChain&) = delete;
 
     static std::uint32_t chooseImageCount(const VkSurfaceCapabilitiesKHR& capabilities, const uxs::db::value& opts);
     static VkExtent2D chooseImageExtent(const VkSurfaceCapabilitiesKHR& capabilities, const uxs::db::value& opts);
@@ -44,16 +40,18 @@ class SwapChain final : public FrameImageProvider, public ISwapChain {
                                          std::uint32_t& image_index) override;
     RenderTargetResult submitFrameImage(std::uint32_t n_frame, std::uint32_t image_index, CommandBuffer& command_buffer,
                                         VkFence fence) override;
+    void removeRenderTarget(RenderTarget* render_target) override;
     //@}
 
     //@{ ISwapChain
+    util::ref_counter& getRefCounter() override { return *this; }
     bool recreate(const uxs::db::value& opts) override;
-    IRenderTarget* createRenderTarget(const uxs::db::value& opts) override;
+    util::ref_ptr<IRenderTarget> createRenderTarget(const uxs::db::value& opts) override;
     //@}
 
  private:
-    Device& device_;
-    Surface& surface_;
+    util::ref_ptr<Device> device_;
+    util::ref_ptr<Surface> surface_;
     VkSwapchainKHR swap_chain_{VK_NULL_HANDLE};
     VkExtent2D image_extent_{};
     uxs::inline_dynarray<VkImage, 3> images_;
@@ -69,6 +67,7 @@ class SwapChain final : public FrameImageProvider, public ISwapChain {
 
     uxs::inline_dynarray<SubmitImageKit, 3> submit_kits_;
 
+    bool recreateSwapChainResources(const uxs::db::value& opts);
     bool loadImageHandles();
     bool createImageViews();
     void destroyImageViews();

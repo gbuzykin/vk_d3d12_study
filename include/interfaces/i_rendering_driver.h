@@ -1,12 +1,11 @@
 #pragma once
 
 #include "rel/win_desc.h"
+#include "util/ref_ptr.h"
 
 #include <uxs/db/value.h>
 
-#include <cstddef>
 #include <limits>
-#include <memory>
 #include <span>
 #include <string_view>
 
@@ -18,7 +17,9 @@
 
 #define APP3D_REGISTER_RENDERING_DRIVER(name, driver_class) \
     constexpr app3d::rel::DriverDesc g_rendering_driver_descriptor{ \
-        name, []() -> std::unique_ptr<app3d::rel::IRenderingDriver> { return std::make_unique<driver_class>(); }}; \
+        name, []() -> app3d::util::ref_ptr<app3d::rel::IRenderingDriver> { \
+            return app3d::util::not_null{::new driver_class()}; \
+        }}; \
     APP3D_ENTRY_EXPORT const app3d::rel::DriverDesc* app3dGetRenderingDriverDescriptor() { \
         return &g_rendering_driver_descriptor; \
     } \
@@ -75,40 +76,50 @@ enum class BufferType {
 
 struct IShaderModule {
     virtual ~IShaderModule() = default;
+    virtual util::ref_counter& getRefCounter() = 0;
 };
 
+struct IDescriptorSet;
 struct IPipelineLayout {
     virtual ~IPipelineLayout() = default;
+    virtual util::ref_counter& getRefCounter() = 0;
+    virtual util::ref_ptr<IDescriptorSet> createDescriptorSet(std::uint32_t set_layout_index) = 0;
 };
 
 struct IPipeline {
     virtual ~IPipeline() = default;
+    virtual util::ref_counter& getRefCounter() = 0;
 };
 
 struct IBuffer {
     virtual ~IBuffer() = default;
+    virtual util::ref_counter& getRefCounter() = 0;
     virtual bool updateBuffer(std::span<const std::uint8_t> data, std::uint64_t offset) = 0;
 };
 
 struct IRenderTarget;
 struct ITexture {
     virtual ~ITexture() = default;
+    virtual util::ref_counter& getRefCounter() = 0;
     virtual bool updateTexture(std::span<const std::uint8_t> data, Vec3i offset, Extent3u extent) = 0;
-    virtual IRenderTarget* createRenderTarget(const uxs::db::value& opts) = 0;
+    virtual util::ref_ptr<IRenderTarget> createRenderTarget(const uxs::db::value& opts) = 0;
 };
 
 struct ISampler {
     virtual ~ISampler() = default;
+    virtual util::ref_counter& getRefCounter() = 0;
 };
 
 struct IDescriptorSet {
     virtual ~IDescriptorSet() = default;
+    virtual util::ref_counter& getRefCounter() = 0;
     virtual void updateCombinedTextureSamplerDescriptor(ITexture& texture, ISampler& sampler, std::uint32_t slot) = 0;
     virtual void updateConstantBufferDescriptor(IBuffer& buffer, std::uint32_t slot) = 0;
 };
 
 struct IRenderTarget {
     virtual ~IRenderTarget() = default;
+    virtual util::ref_counter& getRefCounter() = 0;
     virtual Extent2u getImageExtent() const = 0;
     virtual std::uint32_t getFifCount() const = 0;
     virtual RenderTargetResult beginRenderTarget(const Color4f& clear_color, float depth, std::uint32_t stencil) = 0;
@@ -125,43 +136,67 @@ struct IRenderTarget {
 
 struct ISurface {
     virtual ~ISurface() = default;
+    virtual util::ref_counter& getRefCounter() = 0;
 };
 
 struct ISwapChain {
     virtual ~ISwapChain() = default;
+    virtual util::ref_counter& getRefCounter() = 0;
     virtual bool recreate(const uxs::db::value& opts) = 0;
-    virtual IRenderTarget* createRenderTarget(const uxs::db::value& opts) = 0;
+    virtual util::ref_ptr<IRenderTarget> createRenderTarget(const uxs::db::value& opts) = 0;
 };
 
 struct IDevice {
     virtual ~IDevice() = default;
-    virtual ISwapChain* createSwapChain(ISurface& surface, const uxs::db::value& opts) = 0;
-    virtual IShaderModule* createShaderModule(std::span<const std::uint32_t> source) = 0;
-    virtual IPipelineLayout* createPipelineLayout(const uxs::db::value& config) = 0;
-    virtual IPipeline* createPipeline(IRenderTarget& render_target, IPipelineLayout& pipeline_layout,
-                                      std::span<IShaderModule* const> shader_modules, const uxs::db::value& config) = 0;
-    virtual IBuffer* createBuffer(BufferType type, std::uint64_t size) = 0;
-    virtual ITexture* createTexture(Extent3u extent) = 0;
-    virtual ISampler* createSampler() = 0;
-    virtual IDescriptorSet* createDescriptorSet(IPipelineLayout& pipeline_layout, std::uint32_t set_layout_index) = 0;
+    virtual util::ref_counter& getRefCounter() = 0;
+    virtual bool waitDevice() = 0;
+    virtual util::ref_ptr<ISwapChain> createSwapChain(ISurface& surface, const uxs::db::value& opts) = 0;
+    virtual util::ref_ptr<IShaderModule> createShaderModule(std::span<const std::uint32_t> source) = 0;
+    virtual util::ref_ptr<IPipelineLayout> createPipelineLayout(const uxs::db::value& config) = 0;
+    virtual util::ref_ptr<IPipeline> createPipeline(IRenderTarget& render_target, IPipelineLayout& pipeline_layout,
+                                                    std::span<IShaderModule* const> shader_modules,
+                                                    const uxs::db::value& config) = 0;
+    virtual util::ref_ptr<IBuffer> createBuffer(BufferType type, std::uint64_t size) = 0;
+    virtual util::ref_ptr<ITexture> createTexture(Extent3u extent) = 0;
+    virtual util::ref_ptr<ISampler> createSampler() = 0;
 };
 
 struct IRenderingDriver {
     virtual ~IRenderingDriver() = default;
+    virtual util::ref_counter& getRefCounter() = 0;
     virtual bool init(const uxs::db::value& app_info) = 0;
     virtual std::uint32_t getPhysicalDeviceCount() const = 0;
     virtual const char* getPhysicalDeviceName(std::uint32_t device_index) const = 0;
     virtual bool isSuitablePhysicalDevice(std::uint32_t device_index, const uxs::db::value& caps) const = 0;
-    virtual ISurface* createSurface(const WindowDescriptor& win_desc) = 0;
-    virtual IDevice* createDevice(std::uint32_t device_index, const uxs::db::value& caps) = 0;
+    virtual util::ref_ptr<ISurface> createSurface(const WindowDescriptor& win_desc) = 0;
+    virtual util::ref_ptr<IDevice> createDevice(std::uint32_t device_index, const uxs::db::value& caps) = 0;
 };
 
 // Registered rendering driver descriptor
 struct DriverDesc {
     std::string_view name;
-    std::unique_ptr<IRenderingDriver> (*create_func)();
+    util::ref_ptr<IRenderingDriver> (*create_func)();
 };
 
 using GetDriverDescriptorFuncPtr = const DriverDesc* (*)();
 
 }  // namespace app3d::rel
+
+namespace app3d::util {
+
+template<typename T>
+concept has_get_ref_counter_method = requires(T p) { p.getRefCounter(); };
+
+template<typename T>
+    requires(!has_ref_method<T> && has_get_ref_counter_method<T>)
+struct ref_inc<T> {
+    void operator()(T& p) const { p.getRefCounter().ref(); }
+};
+
+template<typename T>
+    requires(!has_unref_method<T> && has_get_ref_counter_method<T>)
+struct ref_dec<T> {
+    void operator()(T& p) const { p.getRefCounter().unref(); }
+};
+
+}  // namespace app3d::util

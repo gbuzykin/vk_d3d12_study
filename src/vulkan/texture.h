@@ -10,8 +10,6 @@ class Texture final : public FrameImageProvider, public ITexture {
  public:
     explicit Texture(Device& device);
     ~Texture() override;
-    Texture(const Texture&) = delete;
-    Texture& operator=(const Texture&) = delete;
 
     bool create(VkImageType type, VkFormat format, VkExtent3D extent, std::uint32_t num_mipmaps,
                 std::uint32_t num_layers, VkImageUsageFlags usage, bool cubemap, VkImageViewType view_type);
@@ -36,17 +34,19 @@ class Texture final : public FrameImageProvider, public ITexture {
                                          std::uint32_t& image_index) override;
     RenderTargetResult submitFrameImage(std::uint32_t n_frame, std::uint32_t image_index, CommandBuffer& command_buffer,
                                         VkFence fence) override;
+    void removeRenderTarget(RenderTarget* render_target) override {}
     //@}
 
     //@{ ITexture
+    util::ref_counter& getRefCounter() override { return *this; }
     bool updateTexture(std::span<const std::uint8_t> data, Vec3i offset, Extent3u extent) override;
-    IRenderTarget* createRenderTarget(const uxs::db::value& opts) override;
+    util::ref_ptr<IRenderTarget> createRenderTarget(const uxs::db::value& opts) override;
     //@}
 
  private:
-    Device& device_;
-    VkFormat image_format_{};
+    util::ref_ptr<Device> device_;
     VkExtent3D image_extent_{};
+    VkFormat image_format_{};
     VkImage image_{VK_NULL_HANDLE};
     VmaAllocation allocation_{VK_NULL_HANDLE};
     VkImageView image_view_{VK_NULL_HANDLE};

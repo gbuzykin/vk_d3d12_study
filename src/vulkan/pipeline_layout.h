@@ -12,12 +12,10 @@ namespace app3d::rel::vulkan {
 
 class Device;
 
-class PipelineLayout : public IPipelineLayout {
+class PipelineLayout : public util::ref_counter, public IPipelineLayout {
  public:
     explicit PipelineLayout(Device& device);
     ~PipelineLayout();
-    PipelineLayout(const PipelineLayout&) = delete;
-    PipelineLayout& operator=(const PipelineLayout&) = delete;
 
     enum class BindingType { CONSTANT_BUFFER = 0, SHADER_RESOURCE, UNORDERED, SAMPLER, TOTAL_COUNT };
 
@@ -54,8 +52,13 @@ class PipelineLayout : public IPipelineLayout {
     //@{ IPipelineLayout
     //@}
 
+    //@{ IPipelineLayout
+    util::ref_counter& getRefCounter() override { return *this; }
+    util::ref_ptr<IDescriptorSet> createDescriptorSet(std::uint32_t set_layout_index) override;
+    //@}
+
  private:
-    Device& device_;
+    util::ref_ptr<Device> device_;
     VkPipelineLayout pipeline_layout_{VK_NULL_HANDLE};
 
     uxs::inline_dynarray<VkDescriptorSetLayout> set_layouts_;

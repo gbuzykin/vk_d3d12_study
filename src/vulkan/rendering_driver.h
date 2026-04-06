@@ -9,7 +9,6 @@
 namespace app3d::rel::vulkan {
 
 class Surface;
-class Device;
 
 class PhysicalDevice {
  public:
@@ -21,7 +20,7 @@ class PhysicalDevice {
     const VkPhysicalDeviceProperties& getProperties() const { return properties_; }
     const VkPhysicalDeviceFeatures& getFeatures() const { return features_; }
     const VkPhysicalDeviceMemoryProperties& getMemoryProperties() const { return memory_properties_; }
-    const std::vector<VkQueueFamilyProperties>& getQueueFamilies() const { return queue_families_; }
+    std::span<const VkQueueFamilyProperties> getQueueFamilies() const { return queue_families_; }
     std::uint32_t findSuitableQueueFamily(VkQueueFlags flags, std::uint32_t n = 0) const;
     bool isSuitableDevice(const uxs::db::value& caps) const;
 
@@ -39,25 +38,25 @@ class PhysicalDevice {
     std::vector<VkQueueFamilyProperties> queue_families_;
 };
 
-class RenderingDriver final : public IRenderingDriver {
+class RenderingDriver final : public util::ref_counter, public IRenderingDriver {
  public:
     RenderingDriver();
     ~RenderingDriver() override;
-    RenderingDriver(const RenderingDriver&) = delete;
-    RenderingDriver& operator=(const RenderingDriver&) = delete;
 
     bool isExtensionSupported(const char* extension) const;
-    const std::vector<std::unique_ptr<Surface>>& getSurfaces() { return surfaces_; }
+    std::span<Surface*> getSurfaces() { return surfaces_; }
+    void removeSurface(Surface* surface) { std::erase(surfaces_, surface); }
 
     VkInstance operator~() { return instance_; }
 
     //@{ IRenderingDriver
+    util::ref_counter& getRefCounter() override { return *this; }
     bool init(const uxs::db::value& app_info) override;
     std::uint32_t getPhysicalDeviceCount() const override;
     const char* getPhysicalDeviceName(std::uint32_t device_index) const override;
     bool isSuitablePhysicalDevice(std::uint32_t device_index, const uxs::db::value& caps) const override;
-    ISurface* createSurface(const WindowDescriptor& win_desc) override;
-    IDevice* createDevice(std::uint32_t device_index, const uxs::db::value& caps) override;
+    util::ref_ptr<ISurface> createSurface(const WindowDescriptor& win_desc) override;
+    util::ref_ptr<IDevice> createDevice(std::uint32_t device_index, const uxs::db::value& caps) override;
     //@}
 
  private:
@@ -65,8 +64,7 @@ class RenderingDriver final : public IRenderingDriver {
     VkInstance instance_{VK_NULL_HANDLE};
     std::vector<VkExtensionProperties> extensions_;
     std::vector<std::unique_ptr<PhysicalDevice>> physical_devices_;
-    std::vector<std::unique_ptr<Surface>> surfaces_;
-    std::unique_ptr<Device> device_;
+    std::vector<Surface*> surfaces_;
 
     bool loadVulkanLoaderLibrary();
     bool loadExtensionProperties();

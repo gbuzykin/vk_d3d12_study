@@ -8,32 +8,22 @@ namespace app3d::rel::vulkan {
 
 class Device;
 
-class Buffer : public IBuffer {
+class Buffer : public util::ref_counter, public IBuffer {
  public:
     explicit Buffer(Device& device);
     ~Buffer() override;
 
-    Buffer(Buffer&& buf) noexcept
-        : device_(buf.device_), size_(buf.size_), buffer_(buf.buffer_), allocation_(buf.allocation_) {
-        size_ = 0, buffer_ = VK_NULL_HANDLE, allocation_ = VK_NULL_HANDLE;
-    }
-
-    Buffer(const Buffer&) = delete;
-    Buffer& operator=(const Buffer&) = delete;
-
-    VkDeviceSize getSize() const { return size_; }
-
-    bool create(BufferType type, VkDeviceSize size, bool host_access = false);
+    bool create(BufferType type, VkDeviceSize size);
 
     VkBuffer operator~() { return buffer_; }
-    VmaAllocation getAllocation() { return allocation_; }
 
     //@{ IBuffer
+    util::ref_counter& getRefCounter() override { return *this; }
     bool updateBuffer(std::span<const std::uint8_t> data, std::uint64_t offset) override;
     //@}
 
  private:
-    Device& device_;
+    util::ref_ptr<Device> device_;
     BufferType type_{};
     VkDeviceSize size_ = 0;
     VkBuffer buffer_{VK_NULL_HANDLE};
