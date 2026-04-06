@@ -19,7 +19,6 @@ using namespace app3d::rel::vulkan;
 SwapChain::SwapChain(Device& device, Surface& surface) : device_(device), surface_(surface) {}
 
 SwapChain::~SwapChain() {
-    render_target_.reset();
     for (auto& kit : submit_kits_) {
         ObjectDestroyer<VkSemaphore>::destroy(~device_, kit.sem_image_acquired);
         ObjectDestroyer<VkSemaphore>::destroy(~device_, kit.sem_rendering_complete);
@@ -169,6 +168,14 @@ bool SwapChain::create(const uxs::db::value& opts) {
     return true;
 }
 
+VkFormat SwapChain::getImageFormat() const { return surface_.getImageFormat().format; }
+
+VkPipelineStageFlags SwapChain::getImageConsumingStages() const { return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT; }
+
+VkAccessFlags SwapChain::getImageAccess() const { return VK_ACCESS_MEMORY_READ_BIT; }
+
+VkImageLayout SwapChain::getImageLayout() const { return VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; }
+
 void SwapChain::imageBarrierBefore(CommandBuffer& command_buffer, std::uint32_t image_index) {}
 
 void SwapChain::imageBarrierAfter(CommandBuffer& command_buffer, std::uint32_t image_index) {
@@ -259,11 +266,8 @@ RenderTargetResult SwapChain::submitFrameImage(std::uint32_t n_frame, std::uint3
 //@{ ISwapChain
 
 IRenderTarget* SwapChain::createRenderTarget(const uxs::db::value& opts) {
-    auto render_target = std::make_unique<RenderTarget>(device_, *this);
-    if (!render_target->create(opts)) { return nullptr; }
-    if (!render_target->createFrameResources()) { return nullptr; }
-    render_target_ = std::move(render_target);
-    return render_target_.get();
+    render_target_ = device_.createRenderTarget(*this, opts);
+    return render_target_;
 }
 
 //@}

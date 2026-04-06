@@ -5,7 +5,6 @@
 #include "object_destroyer.h"
 #include "pipeline.h"
 #include "pipeline_layout.h"
-#include "surface.h"
 #include "swap_chain.h"
 #include "vulkan_logger.h"
 #include "wrappers.h"
@@ -17,7 +16,8 @@ using namespace app3d::rel::vulkan;
 // --------------------------------------------------------
 // RenderTarget class implementation
 
-RenderTarget::RenderTarget(Device& device, SwapChain& swap_chain) : device_(device), swap_chain_(swap_chain) {}
+RenderTarget::RenderTarget(Device& device, FrameImageProvider& image_provider)
+    : device_(device), frame_image_provider_(image_provider) {}
 
 RenderTarget::~RenderTarget() {
     destroyFrameResources();
@@ -34,14 +34,14 @@ bool RenderTarget::create(const uxs::db::value& opts) {
     uxs::inline_dynarray<VkAttachmentDescription, 2> attachments_descriptions;
 
     attachments_descriptions.push_back(VkAttachmentDescription{
-        .format = swap_chain_.getSurface().getImageFormat().format,
+        .format = frame_image_provider_.getImageFormat(),
         .samples = VK_SAMPLE_COUNT_1_BIT,
         .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
         .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
         .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        .finalLayout = frame_image_provider_.getImageLayout(),
     });
 
     if (use_depth_) {
@@ -89,9 +89,9 @@ bool RenderTarget::create(const uxs::db::value& opts) {
             .srcSubpass = 0,
             .dstSubpass = VK_SUBPASS_EXTERNAL,
             .srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            .dstStageMask = frame_image_provider_.getImageConsumingStages(),
             .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-            .dstAccessMask = VK_ACCESS_MEMORY_READ_BIT,
+            .dstAccessMask = frame_image_provider_.getImageAccess(),
             .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
         },
     };
@@ -112,7 +112,7 @@ bool RenderTarget::create(const uxs::db::value& opts) {
         return false;
     }
 
-    frame_render_kits_.resize(swap_chain_.getFifCount());
+    frame_render_kits_.resize(frame_image_provider_.getFifCount());
     for (auto& kit : frame_render_kits_) {
         if (!device_.createFence(true, kit.fence)) { return false; }
         VkCommandBuffer command_buffer = VK_NULL_HANDLE;
@@ -124,9 +124,9 @@ bool RenderTarget::create(const uxs::db::value& opts) {
 }
 
 bool RenderTarget::createFrameResources() {
-    image_extent_ = swap_chain_.getImageExtent();
+    image_extent_ = frame_image_provider_.getImageExtent();
 
-    const std::uint32_t image_count = swap_chain_.getImageCount();
+    const std::uint32_t image_count = frame_image_provider_.getImageCount();
 
     frame_resources_.resize(image_count);
 
@@ -134,7 +134,7 @@ bool RenderTarget::createFrameResources() {
         auto& res = frame_resources_[n];
 
         uxs::inline_dynarray<VkImageView, 2> attachments;
-        attachments.push_back(swap_chain_.getImageView(n));
+        attachments.push_back(frame_image_provider_.getImageView(n));
 
         if (use_depth_) {
             const VkImageCreateInfo create_info{
@@ -231,14 +231,14 @@ RenderTargetResult RenderTarget::beginRenderTarget(const Color4f& clear_color, f
     }
 
     std::uint32_t image_index = 0;
-    render_target_status_ = swap_chain_.acquireFrameImage(n_frame_, ACQUIRE_FRAME_IMAGE_TIMEOUT, image_index);
+    render_target_status_ = frame_image_provider_.acquireFrameImage(n_frame_, ACQUIRE_FRAME_IMAGE_TIMEOUT, image_index);
     if (render_target_status_ > RenderTargetResult::SUBOPTIMAL) { return render_target_status_; }
 
     if (!kit.command_buffer.beginCommandBuffer(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) {
         return RenderTargetResult::FAILED;
     }
 
-    swap_chain_.imageBarrierBefore(kit.command_buffer, image_index);
+    frame_image_provider_.imageBarrierBefore(kit.command_buffer, image_index);
 
     uxs::inline_dynarray<VkClearValue, 2> clear_values;
     clear_values.push_back(VkClearValue{.color = {{clear_color.r, clear_color.g, clear_color.b, clear_color.a}}});
@@ -261,13 +261,13 @@ bool RenderTarget::endRenderTarget() {
 
     kit.command_buffer.endRenderPass();
 
-    swap_chain_.imageBarrierAfter(kit.command_buffer, image_index);
+    frame_image_provider_.imageBarrierAfter(kit.command_buffer, image_index);
 
     if (!kit.command_buffer.endCommandBuffer()) { return false; }
 
     if (!device_.resetFences(std::array{kit.fence})) { return false; }
 
-    render_target_status_ = swap_chain_.submitFrameImage(n_frame_, image_index, kit.command_buffer, kit.fence);
+    render_target_status_ = frame_image_provider_.submitFrameImage(n_frame_, image_index, kit.command_buffer, kit.fence);
 
     return render_target_status_ <= RenderTargetResult::OUT_OF_DATE;
 }

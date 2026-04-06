@@ -219,9 +219,11 @@ bool App3DMainWindow::renderScene() {
 
     render_target_->bindPipeline(*pipeline_);
 
-    render_target_->setViewport(rel::Rect{.extent = swap_chain_->getImageExtent()}, 0.0f, 1.0f);
+    const auto image_extent = render_target_->getImageExtent();
 
-    render_target_->setScissor(rel::Rect{.extent = swap_chain_->getImageExtent()});
+    render_target_->setViewport(rel::Rect{.extent = image_extent}, 0.0f, 1.0f);
+
+    render_target_->setScissor(rel::Rect{.extent = image_extent});
 
     render_target_->bindDescriptorSet(*descriptor_set_, 0);
 

@@ -238,6 +238,7 @@ bool Device::create(const uxs::db::value& caps) {
     textures_.reserve(16);
     samplers_.reserve(16);
     descriptor_sets_.reserve(16);
+    render_targets_.reserve(16);
 
     return true;
 }
@@ -252,6 +253,7 @@ void Device::finalize() {
     pipelines_.clear();
     pipeline_layouts_.clear();
     shader_modules_.clear();
+    render_targets_.clear();
     graphics_queue_.destroy();
     compute_queue_.destroy();
     transfer_queue_.destroy();
@@ -309,6 +311,13 @@ bool Device::resetFences(std::span<const VkFence> fences) {
     return true;
 }
 
+RenderTarget* Device::createRenderTarget(FrameImageProvider& image_provider, const uxs::db::value& opts) {
+    auto render_target = std::make_unique<RenderTarget>(*this, image_provider);
+    if (!render_target->create(opts)) { return nullptr; }
+    if (!render_target->createFrameResources()) { return nullptr; }
+    return render_targets_.emplace_back(std::move(render_target)).get();
+}
+
 bool Device::obtainDescriptorSet(VkDescriptorSetLayout descriptor_set_layout, VkDescriptorSet& descriptor_set) {
     const VkDescriptorSetAllocateInfo allocate_info{
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -330,9 +339,9 @@ void Device::releaseDescriptorSet(VkDescriptorSet descriptor_set) {
     vkFreeDescriptorSets(device_, descriptor_pool_, 1, &descriptor_set);
 }
 
-bool Device::updateBuffer(const void* data, VkDeviceSize data_size, VkBuffer dst, VkDeviceSize dst_offset,
-                          VkAccessFlags dst_current_access, VkAccessFlags dst_new_access,
-                          VkPipelineStageFlags dst_generating_stages, VkPipelineStageFlags dst_consuming_stages,
+bool Device::updateBuffer(const void* data, VkDeviceSize data_size, VkBuffer dst, VkDeviceSize offset,
+                          VkPipelineStageFlags generating_stages, VkPipelineStageFlags consuming_stages,
+                          VkAccessFlags current_access, VkAccessFlags new_access,
                           std::span<const VkSemaphore> signal_semaphores) {
     if (++current_transfer_kit_ == TRANSFER_KIT_COUNT) { current_transfer_kit_ = 0; }
     auto& kit = transfer_kits_[current_transfer_kit_];
@@ -351,11 +360,11 @@ bool Device::updateBuffer(const void* data, VkDeviceSize data_size, VkBuffer dst
 
     if (!kit.command_buffer.beginCommandBuffer(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) { return false; }
 
-    kit.command_buffer.setBufferMemoryBarrier(dst_generating_stages, VK_PIPELINE_STAGE_TRANSFER_BIT,
+    kit.command_buffer.setBufferMemoryBarrier(generating_stages, VK_PIPELINE_STAGE_TRANSFER_BIT,
                                               std::array{
                                                   Wrapper<VkBufferMemoryBarrier>::unwrap({
                                                       .buffer = dst,
-                                                      .current_access = dst_current_access,
+                                                      .current_access = current_access,
                                                       .new_access = VK_ACCESS_TRANSFER_WRITE_BIT,
                                                       .current_queue_family = VK_QUEUE_FAMILY_IGNORED,
                                                       .new_queue_family = VK_QUEUE_FAMILY_IGNORED,
@@ -364,15 +373,15 @@ bool Device::updateBuffer(const void* data, VkDeviceSize data_size, VkBuffer dst
 
     kit.command_buffer.copyBuffer(~kit.staging_buffer, dst,
                                   std::array{
-                                      VkBufferCopy{.dstOffset = dst_offset, .size = data_size},
+                                      VkBufferCopy{.dstOffset = offset, .size = data_size},
                                   });
 
-    kit.command_buffer.setBufferMemoryBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, dst_consuming_stages,
+    kit.command_buffer.setBufferMemoryBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, consuming_stages,
                                               std::array{
                                                   Wrapper<VkBufferMemoryBarrier>::unwrap({
                                                       .buffer = dst,
                                                       .current_access = VK_ACCESS_TRANSFER_WRITE_BIT,
-                                                      .new_access = dst_new_access,
+                                                      .new_access = new_access,
                                                       .current_queue_family = VK_QUEUE_FAMILY_IGNORED,
                                                       .new_queue_family = VK_QUEUE_FAMILY_IGNORED,
                                                   }),
@@ -389,11 +398,10 @@ bool Device::updateBuffer(const void* data, VkDeviceSize data_size, VkBuffer dst
     return true;
 }
 
-bool Device::updateImage(const void* data, VkDeviceSize data_size, VkImage dst,
-                         VkImageSubresourceLayers dst_subresource, VkOffset3D dst_offset, VkExtent3D dst_extent,
-                         VkImageLayout dst_current_layout, VkImageLayout dst_new_layout,
-                         VkAccessFlags dst_current_access, VkAccessFlags dst_new_access, VkImageAspectFlags dst_aspect,
-                         VkPipelineStageFlags dst_generating_stages, VkPipelineStageFlags dst_consuming_stages,
+bool Device::updateImage(const void* data, VkDeviceSize data_size, VkImage dst, VkImageSubresourceLayers subresource,
+                         VkOffset3D offset, VkExtent3D extent, VkPipelineStageFlags generating_stages,
+                         VkPipelineStageFlags consuming_stages, VkAccessFlags current_access, VkAccessFlags new_access,
+                         VkImageLayout current_layout, VkImageLayout new_layout, VkImageAspectFlags aspect,
                          std::span<const VkSemaphore> signal_semaphores) {
     if (++current_transfer_kit_ == TRANSFER_KIT_COUNT) { current_transfer_kit_ = 0; }
     auto& kit = transfer_kits_[current_transfer_kit_];
@@ -412,40 +420,40 @@ bool Device::updateImage(const void* data, VkDeviceSize data_size, VkImage dst,
 
     if (!kit.command_buffer.beginCommandBuffer(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) { return false; }
 
-    kit.command_buffer.setImageMemoryBarrier(dst_generating_stages, VK_PIPELINE_STAGE_TRANSFER_BIT,
+    kit.command_buffer.setImageMemoryBarrier(generating_stages, VK_PIPELINE_STAGE_TRANSFER_BIT,
                                              std::array{
                                                  Wrapper<VkImageMemoryBarrier>::unwrap({
                                                      .image = dst,
-                                                     .current_access = dst_current_access,
+                                                     .current_access = current_access,
                                                      .new_access = VK_ACCESS_TRANSFER_WRITE_BIT,
-                                                     .current_layout = dst_current_layout,
+                                                     .current_layout = current_layout,
                                                      .new_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                                      .current_queue_family = VK_QUEUE_FAMILY_IGNORED,
                                                      .new_queue_family = VK_QUEUE_FAMILY_IGNORED,
-                                                     .aspect = dst_aspect,
+                                                     .aspect = aspect,
                                                  }),
                                              });
 
     kit.command_buffer.copyBufferToImage(~kit.staging_buffer, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                          std::array{
                                              VkBufferImageCopy{
-                                                 .imageSubresource = dst_subresource,
-                                                 .imageOffset = dst_offset,
-                                                 .imageExtent = dst_extent,
+                                                 .imageSubresource = subresource,
+                                                 .imageOffset = offset,
+                                                 .imageExtent = extent,
                                              },
                                          });
 
-    kit.command_buffer.setImageMemoryBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, dst_consuming_stages,
+    kit.command_buffer.setImageMemoryBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, consuming_stages,
                                              std::array{
                                                  Wrapper<VkImageMemoryBarrier>::unwrap({
                                                      .image = dst,
                                                      .current_access = VK_ACCESS_TRANSFER_WRITE_BIT,
-                                                     .new_access = dst_new_access,
+                                                     .new_access = new_access,
                                                      .current_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                                     .new_layout = dst_new_layout,
+                                                     .new_layout = new_layout,
                                                      .current_queue_family = VK_QUEUE_FAMILY_IGNORED,
                                                      .new_queue_family = VK_QUEUE_FAMILY_IGNORED,
-                                                     .aspect = dst_aspect,
+                                                     .aspect = aspect,
                                                  }),
                                              });
 

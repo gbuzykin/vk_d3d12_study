@@ -7,12 +7,12 @@
 namespace app3d::rel::vulkan {
 
 class Device;
-class SwapChain;
+class FrameImageProvider;
 class Pipeline;
 
 class RenderTarget final : public IRenderTarget {
  public:
-    RenderTarget(Device& device, SwapChain& swap_chain);
+    RenderTarget(Device& device, FrameImageProvider& image_provider);
     ~RenderTarget() override;
     RenderTarget(const RenderTarget&) = delete;
     RenderTarget& operator=(const RenderTarget&) = delete;
@@ -26,6 +26,7 @@ class RenderTarget final : public IRenderTarget {
     VkRenderPass getRenderPass() { return render_pass_; }
 
     //@{ IRenderTarget
+    Extent2u getImageExtent() const override { return {.width = image_extent_.width, .height = image_extent_.height}; }
     std::uint32_t getFifCount() const override { return std::uint32_t(frame_render_kits_.size()); }
     RenderTargetResult beginRenderTarget(const Color4f& clear_color, float depth, std::uint32_t stencil) override;
     bool endRenderTarget() override;
@@ -41,9 +42,9 @@ class RenderTarget final : public IRenderTarget {
 
  private:
     Device& device_;
-    SwapChain& swap_chain_;
+    FrameImageProvider& frame_image_provider_;
     bool use_depth_ = false;
-    Extent2u image_extent_{};
+    VkExtent2D image_extent_{};
     VkFormat depth_format_{VK_FORMAT_D16_UNORM};
     VkRenderPass render_pass_{VK_NULL_HANDLE};
     RenderTargetResult render_target_status_{RenderTargetResult::SUCCESS};

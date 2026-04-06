@@ -2,8 +2,11 @@
 
 #include "device.h"
 #include "object_destroyer.h"
+#include "render_target.h"
 #include "rendering_driver.h"
 #include "vulkan_logger.h"
+
+#include <array>
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -19,7 +22,7 @@ Texture::~Texture() {
     vmaDestroyImage(device_.getAllocator(), image_, allocation_);
 }
 
-bool Texture::create(VkImageType type, VkFormat format, VkExtent3D size, std::uint32_t num_mipmaps,
+bool Texture::create(VkImageType type, VkFormat format, VkExtent3D extent, std::uint32_t num_mipmaps,
                      std::uint32_t num_layers, VkImageUsageFlags usage, bool cubemap, VkImageViewType view_type) {
     VkFormatProperties format_properties;
     vkGetPhysicalDeviceFormatProperties(~device_.getPhysicalDevice(), format, &format_properties);
@@ -39,7 +42,7 @@ bool Texture::create(VkImageType type, VkFormat format, VkExtent3D size, std::ui
         .flags = cubemap ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0U,
         .imageType = type,
         .format = format,
-        .extent = size,
+        .extent = extent,
         .mipLevels = num_mipmaps,
         .arrayLayers = cubemap ? 6 * num_layers : num_layers,
         .samples = VK_SAMPLE_COUNT_1_BIT,
@@ -78,7 +81,32 @@ bool Texture::create(VkImageType type, VkFormat format, VkExtent3D size, std::ui
         return false;
     }
 
+    image_format_ = format;
+    image_extent_ = extent;
     return true;
+}
+
+VkPipelineStageFlags Texture::getImageConsumingStages() const { return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; }
+
+VkAccessFlags Texture::getImageAccess() const { return VK_ACCESS_SHADER_READ_BIT; }
+
+VkImageLayout Texture::getImageLayout() const { return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; }
+
+void Texture::imageBarrierBefore(CommandBuffer& command_buffer, std::uint32_t image_index) {}
+
+void Texture::imageBarrierAfter(CommandBuffer& command_buffer, std::uint32_t image_index) {}
+
+RenderTargetResult Texture::acquireFrameImage(std::uint32_t n_frame, std::uint64_t timeout, std::uint32_t& image_index) {
+    image_index = 0;
+    return RenderTargetResult::SUCCESS;
+}
+
+RenderTargetResult Texture::submitFrameImage(std::uint32_t n_frame, std::uint32_t image_index,
+                                             CommandBuffer& command_buffer, VkFence fence) {
+    if (!device_.getGraphicsQueue().submitCommandBuffers({}, std::array{~command_buffer}, {}, fence)) {
+        return RenderTargetResult::FAILED;
+    }
+    return RenderTargetResult::SUCCESS;
 }
 
 //@{ ITexture
@@ -93,9 +121,13 @@ bool Texture::updateTexture(std::span<const std::uint8_t> data, Vec3i offset, Ex
                                },
                                {.x = offset.x, .y = offset.y, .z = offset.z},
                                {.width = extent.width, .height = extent.height, .depth = extent.depth},
-                               VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_NONE,
-                               VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, {});
+                               VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_NONE,
+                               VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
+                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, {});
+}
+
+IRenderTarget* Texture::createRenderTarget(const uxs::db::value& opts) {
+    return device_.createRenderTarget(*this, opts);
 }
 
 //@}
