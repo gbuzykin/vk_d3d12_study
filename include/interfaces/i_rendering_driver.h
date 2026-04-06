@@ -1,11 +1,10 @@
 #pragma once
 
+#include "util/ref_ptr.h"
+
 #include <uxs/db/value.h>
 
-#include <cstddef>
-#include <cstdint>
 #include <limits>
-#include <memory>
 #include <span>
 #include <string_view>
 #include <type_traits>
@@ -18,7 +17,7 @@
 
 #define APP3D_REGISTER_RENDERING_DRIVER(name, driver_class) \
     constexpr app3d::rel::DriverDesc g_rendering_driver_descriptor{ \
-        name, []() -> std::unique_ptr<app3d::rel::IRenderingDriver> { return std::make_unique<driver_class>(); }}; \
+        name, []() -> util::ref_ptr<app3d::rel::IRenderingDriver> { return ::new driver_class(); }}; \
     APP3D_ENTRY_EXPORT const app3d::rel::DriverDesc* app3dGetRenderingDriverDescriptor() { \
         return &g_rendering_driver_descriptor; \
     } \
@@ -80,43 +79,36 @@ enum class BufferType {
     CONSTANT,
 };
 
-struct IShaderModule {
-    virtual ~IShaderModule() = default;
+struct IUnknown {
+    virtual ~IUnknown() = default;
+    virtual util::ref_counter& getRefCounter() = 0;
 };
 
-struct IPipelineLayout {
-    virtual ~IPipelineLayout() = default;
-};
+struct IShaderModule : IUnknown {};
 
-struct IPipeline {
-    virtual ~IPipeline() = default;
-};
+struct IPipelineLayout : IUnknown {};
 
-struct IBuffer {
-    virtual ~IBuffer() = default;
+struct IPipeline : IUnknown {};
+
+struct IBuffer : IUnknown {
     virtual bool updateVertexBuffer(std::span<const std::uint8_t> data, std::size_t offset) = 0;
     virtual bool updateConstantBuffer(std::span<const std::uint8_t> data, std::size_t offset) = 0;
 };
 
 struct IRenderTarget;
-struct ITexture {
-    virtual ~ITexture() = default;
+struct ITexture : IUnknown {
     virtual bool updateTexture(std::span<const std::uint8_t> data, Vec3i offset, Extent3u extent) = 0;
-    virtual IRenderTarget* createRenderTarget(const uxs::db::value& opts) = 0;
+    virtual util::ref_ptr<IRenderTarget> createRenderTarget(const uxs::db::value& opts) = 0;
 };
 
-struct ISampler {
-    virtual ~ISampler() = default;
-};
+struct ISampler : IUnknown {};
 
-struct IDescriptorSet {
-    virtual ~IDescriptorSet() = default;
+struct IDescriptorSet : IUnknown {
     virtual void updateTextureSamplerDescriptor(ITexture& texture, ISampler& sampler, std::uint32_t slot) = 0;
     virtual void updateConstantBufferDescriptor(IBuffer& buffer, std::uint32_t slot) = 0;
 };
 
-struct IRenderTarget {
-    virtual ~IRenderTarget() = default;
+struct IRenderTarget : IUnknown {
     virtual Extent2u getImageExtent() const = 0;
     virtual std::uint32_t getFifCount() const = 0;
     virtual RenderTargetResult beginRenderTarget(const Color4f& clear_color, float depth, std::uint32_t stencil) = 0;
@@ -131,26 +123,26 @@ struct IRenderTarget {
                               std::uint32_t first_instance) = 0;
 };
 
-struct IDevice {
-    virtual ~IDevice() = default;
-    virtual IShaderModule* createShaderModule(std::span<const std::uint32_t> source) = 0;
-    virtual IPipelineLayout* createPipelineLayout(const uxs::db::value& config) = 0;
-    virtual IPipeline* createPipeline(IRenderTarget& render_target, IPipelineLayout& pipeline_layout,
-                                      std::span<IShaderModule* const> shader_modules, const uxs::db::value& config) = 0;
-    virtual IBuffer* createBuffer(std::size_t size, BufferType type) = 0;
-    virtual ITexture* createTexture(Extent3u extent) = 0;
-    virtual ISampler* createSampler() = 0;
-    virtual IDescriptorSet* createDescriptorSet(IPipelineLayout& pipeline_layout) = 0;
+struct IDevice : IUnknown {
+    virtual bool waitDevice() = 0;
+    virtual util::ref_ptr<IShaderModule> createShaderModule(std::span<const std::uint32_t> source) = 0;
+    virtual util::ref_ptr<IPipelineLayout> createPipelineLayout(const uxs::db::value& config) = 0;
+    virtual util::ref_ptr<IPipeline> createPipeline(IRenderTarget& render_target, IPipelineLayout& pipeline_layout,
+                                                    std::span<IShaderModule* const> shader_modules,
+                                                    const uxs::db::value& config) = 0;
+    virtual util::ref_ptr<IBuffer> createBuffer(std::size_t size, BufferType type) = 0;
+    virtual util::ref_ptr<ITexture> createTexture(Extent3u extent) = 0;
+    virtual util::ref_ptr<ISampler> createSampler() = 0;
+    virtual util::ref_ptr<IDescriptorSet> createDescriptorSet(IPipelineLayout& pipeline_layout) = 0;
 };
 
-struct ISwapChain {
-    virtual ~ISwapChain() = default;
-    virtual IRenderTarget* createRenderTarget(const uxs::db::value& opts) = 0;
+struct ISwapChain : IUnknown {
+    virtual bool recreate(const uxs::db::value& opts) = 0;
+    virtual util::ref_ptr<IRenderTarget> createRenderTarget(const uxs::db::value& opts) = 0;
 };
 
-struct ISurface {
-    virtual ~ISurface() = default;
-    virtual ISwapChain* createSwapChain(IDevice& device, const uxs::db::value& opts) = 0;
+struct ISurface : IUnknown {
+    virtual util::ref_ptr<ISwapChain> createSwapChain(IDevice& device, const uxs::db::value& opts) = 0;
 };
 
 struct WindowDescriptor {
@@ -160,22 +152,37 @@ struct WindowDescriptor {
     } handle;
 };
 
-struct IRenderingDriver {
-    virtual ~IRenderingDriver() = default;
+struct IRenderingDriver : IUnknown {
     virtual bool init(const uxs::db::value& app_info) = 0;
     virtual std::uint32_t getPhysicalDeviceCount() const = 0;
     virtual const char* getPhysicalDeviceName(std::uint32_t device_index) const = 0;
     virtual bool isSuitablePhysicalDevice(std::uint32_t device_index, const uxs::db::value& caps) const = 0;
-    virtual ISurface* createSurface(const WindowDescriptor& win_desc) = 0;
-    virtual IDevice* createDevice(std::uint32_t device_index, const uxs::db::value& caps) = 0;
+    virtual util::ref_ptr<ISurface> createSurface(const WindowDescriptor& win_desc) = 0;
+    virtual util::ref_ptr<IDevice> createDevice(std::uint32_t device_index, const uxs::db::value& caps) = 0;
 };
 
 // Registered rendering driver descriptor
 struct DriverDesc {
     std::string_view name;
-    std::unique_ptr<IRenderingDriver> (*create_func)();
+    util::ref_ptr<IRenderingDriver> (*create_func)();
 };
 
 using GetDriverDescriptorFuncPtr = const DriverDesc* (*)();
 
 }  // namespace app3d::rel
+
+namespace app3d::util {
+
+template<typename Ty>
+    requires(!has_ref_method<Ty> && std::is_base_of_v<rel::IUnknown, Ty>)
+struct ref_inc<Ty> {
+    void operator()(rel::IUnknown& p) const { p.getRefCounter().ref(); }
+};
+
+template<typename Ty>
+    requires(!has_unref_method<Ty> && std::is_base_of_v<rel::IUnknown, Ty>)
+struct ref_dec<Ty> {
+    void operator()(rel::IUnknown& p) const { p.getRefCounter().unref(); }
+};
+
+}  // namespace app3d::util

@@ -17,6 +17,10 @@ using namespace app3d;
 
 class App3DMainWindow final : public MainWindow {
  public:
+    ~App3DMainWindow() {
+        if (device_) { device_->waitDevice(); }
+    }
+
     int init(int argc, char** argv);
 
     bool onIdle(int& ret_code) override {
@@ -24,7 +28,7 @@ class App3DMainWindow final : public MainWindow {
 
         if (recreate_swap_chain_scheduled_) {
             if (std::chrono::duration<double>(time_now - recreate_swap_chain_timer_start_).count() >= 0.25) {
-                if (!surface_->createSwapChain(*device_, swap_chain_opts_)) {
+                if (!swap_chain_->recreate(swap_chain_opts_)) {
                     ret_code = -1;
                     return false;
                 }
@@ -60,22 +64,24 @@ class App3DMainWindow final : public MainWindow {
     std::chrono::high_resolution_clock::time_point recreate_swap_chain_timer_start_{};
     bool recreate_swap_chain_scheduled_ = false;
 
-    std::unique_ptr<rel::IRenderingDriver> driver_;
-    rel::ISurface* surface_ = nullptr;
+    util::ref_ptr<rel::IRenderingDriver> driver_;
+    util::ref_ptr<rel::ISurface> surface_;
 
     uxs::db::value device_caps_;
-    rel::IDevice* device_ = nullptr;
+    util::ref_ptr<rel::IDevice> device_;
 
     uxs::db::value swap_chain_opts_;
-    rel::ISwapChain* swap_chain_ = nullptr;
+    util::ref_ptr<rel::ISwapChain> swap_chain_;
 
-    rel::IRenderTarget* render_target_ = nullptr;
-    rel::IPipelineLayout* pipeline_layout_ = nullptr;
-    rel::IPipeline* pipeline_ = nullptr;
-    rel::ITexture* texture_ = nullptr;
-    rel::ISampler* sampler_ = nullptr;
-    rel::IDescriptorSet* descriptor_set_ = nullptr;
-    rel::IBuffer* vertex_buffer_ = nullptr;
+    util::ref_ptr<rel::IRenderTarget> render_target_;
+    util::ref_ptr<rel::IShaderModule> vertex_shader_module_;
+    util::ref_ptr<rel::IShaderModule> pixel_shader_module_;
+    util::ref_ptr<rel::IPipelineLayout> pipeline_layout_;
+    util::ref_ptr<rel::IPipeline> pipeline_;
+    util::ref_ptr<rel::ITexture> texture_;
+    util::ref_ptr<rel::ISampler> sampler_;
+    util::ref_ptr<rel::IDescriptorSet> descriptor_set_;
+    util::ref_ptr<rel::IBuffer> vertex_buffer_;
 
     void scheduleRecreateSwapChain() {
         recreate_swap_chain_timer_start_ = std::chrono::high_resolution_clock::now();
@@ -146,11 +152,11 @@ bool App3DMainWindow::initScene() {
         ifile.read(util::as_byte_span(pixel_shader_spv));
     }
 
-    auto* vertex_shader_module = device_->createShaderModule(vertex_shader_spv);
-    if (!vertex_shader_module) { return false; }
+    vertex_shader_module_ = device_->createShaderModule(vertex_shader_spv);
+    if (!vertex_shader_module_) { return false; }
 
-    auto* pixel_shader_module = device_->createShaderModule(pixel_shader_spv);
-    if (!pixel_shader_module) { return false; }
+    pixel_shader_module_ = device_->createShaderModule(pixel_shader_spv);
+    if (!pixel_shader_module_) { return false; }
 
     const auto pipeline_layout_config = JSON({
         "descriptor_set_layouts" : [ {
@@ -176,7 +182,8 @@ bool App3DMainWindow::initScene() {
     });
 
     if (!(pipeline_ = device_->createPipeline(*render_target_, *pipeline_layout_,
-                                              std::array{vertex_shader_module, pixel_shader_module}, pipeline_config))) {
+                                              std::array{vertex_shader_module_.get(), pixel_shader_module_.get()},
+                                              pipeline_config))) {
         return false;
     }
 
@@ -242,6 +249,7 @@ int main(int argc, char** argv) {
     try {
         App3DMainWindow win;
 
+        setLogLevel(LogLevel::PR_DEBUG);
         int init_result = win.init(argc, argv);
         if (init_result != 0) { return init_result; }
 

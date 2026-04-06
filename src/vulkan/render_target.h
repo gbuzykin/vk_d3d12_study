@@ -10,12 +10,10 @@ class Device;
 class ImageProvider;
 class Pipeline;
 
-class RenderTarget final : public IRenderTarget {
+class RenderTarget final : public util::ref_counter, public IRenderTarget {
  public:
     RenderTarget(Device& device, ImageProvider& image_provider);
     ~RenderTarget() override;
-    RenderTarget(const RenderTarget&) = delete;
-    RenderTarget& operator=(const RenderTarget&) = delete;
 
     bool useDepth() const { return use_depth_; }
 
@@ -24,6 +22,10 @@ class RenderTarget final : public IRenderTarget {
     void destroyFrameResources();
 
     VkRenderPass getRenderPass() { return render_pass_; }
+
+    //@{ IUnknown
+    util::ref_counter& getRefCounter() override { return *this; }
+    //@}
 
     //@{ IRenderTarget
     Extent2u getImageExtent() const override { return {.width = image_extent_.width, .height = image_extent_.height}; }
@@ -41,8 +43,8 @@ class RenderTarget final : public IRenderTarget {
     //@}
 
  private:
-    Device& device_;
-    ImageProvider& image_provider_;
+    util::reference<Device> device_;
+    util::reference<ImageProvider> image_provider_;
     bool use_depth_ = false;
     VkExtent2D image_extent_{};
     VkFormat depth_format_{VK_FORMAT_D16_UNORM};

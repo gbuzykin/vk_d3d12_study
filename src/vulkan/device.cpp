@@ -26,9 +26,15 @@ Device::Device(RenderingDriver& instance, PhysicalDevice& physical_device)
       transfer_queue_(*this), present_queue_(*this) {}
 
 Device::~Device() {
+    graphics_queue_.destroy();
+    compute_queue_.destroy();
+    transfer_queue_.destroy();
+    present_queue_.destroy();
     ObjectDestroyer<VkDescriptorPool>::destroy(device_, descriptor_pool_);
-    for (auto& kit : transfer_kits_) { ObjectDestroyer<VkFence>::destroy(device_, kit.fence); }
-    transfer_kits_.clear();
+    for (auto& kit : transfer_kits_) {
+        vmaDestroyBuffer(vma_allocator_, kit.staging_buffer.handle, kit.staging_buffer.allocation);
+        ObjectDestroyer<VkFence>::destroy(device_, kit.fence);
+    }
     vmaDestroyAllocator(vma_allocator_);
     ObjectDestroyer<VkDevice>::destroy(device_);
 }
@@ -124,7 +130,7 @@ bool Device::create(const uxs::db::value& caps) {
         return false;
     }
 
-    for (const auto& surface : instance_.getSurfaces()) {
+    for (const auto* surface : instance_.get().getSurfaces()) {
         const std::uint32_t family_index = surface->getPresentQueueFamily();
         if (present_queue_.getFamilyIndex() == INVALID_UINT32_VALUE) {
             if (family_index == INVALID_UINT32_VALUE) {
@@ -192,7 +198,7 @@ bool Device::create(const uxs::db::value& caps) {
         .physicalDevice = ~physical_device_,
         .device = device_,
         .pVulkanFunctions = &vulkan_functions,
-        .instance = ~instance_,
+        .instance = ~instance_.get(),
         .vulkanApiVersion = VK_API_VERSION_1_2,
     };
 
@@ -207,9 +213,8 @@ bool Device::create(const uxs::db::value& caps) {
     if (!transfer_queue_.create()) { return false; }
     if (!present_queue_.create()) { return false; }
 
-    transfer_kits_.reserve(TRANSFER_KIT_COUNT);
-    for (std::uint32_t n = 0; n < TRANSFER_KIT_COUNT; ++n) {
-        auto& kit = transfer_kits_.emplace_back(*this);
+    transfer_kits_.resize(TRANSFER_KIT_COUNT);
+    for (auto& kit : transfer_kits_) {
         VkCommandBuffer command_buffer = VK_NULL_HANDLE;
         if (!transfer_queue_.obtainCommandBuffer(command_buffer)) { return false; }
         kit.command_buffer = CommandBuffer::wrap(command_buffer);
@@ -231,41 +236,6 @@ bool Device::create(const uxs::db::value& caps) {
         return false;
     }
 
-    shader_modules_.reserve(16);
-    pipeline_layouts_.reserve(16);
-    pipelines_.reserve(16);
-    buffers_.reserve(16);
-    textures_.reserve(16);
-    samplers_.reserve(16);
-    descriptor_sets_.reserve(16);
-    render_targets_.reserve(16);
-
-    return true;
-}
-
-void Device::finalize() {
-    if (device_ == VK_NULL_HANDLE) { return; }
-    waitDevice();
-    descriptor_sets_.clear();
-    samplers_.clear();
-    textures_.clear();
-    buffers_.clear();
-    pipelines_.clear();
-    pipeline_layouts_.clear();
-    shader_modules_.clear();
-    render_targets_.clear();
-    graphics_queue_.destroy();
-    compute_queue_.destroy();
-    transfer_queue_.destroy();
-    present_queue_.destroy();
-}
-
-bool Device::waitDevice() {
-    VkResult result = vkDeviceWaitIdle(device_);
-    if (result != VK_SUCCESS) {
-        logError(LOG_VK "waiting for device failed: {}", result);
-        return false;
-    }
     return true;
 }
 
@@ -311,13 +281,6 @@ bool Device::resetFences(std::span<const VkFence> fences) {
     return true;
 }
 
-RenderTarget* Device::createRenderTarget(ImageProvider& image_provider, const uxs::db::value& opts) {
-    auto render_target = std::make_unique<RenderTarget>(*this, image_provider);
-    if (!render_target->create(opts)) { return nullptr; }
-    if (!render_target->createFrameResources()) { return nullptr; }
-    return render_targets_.emplace_back(std::move(render_target)).get();
-}
-
 bool Device::obtainDescriptorSet(VkDescriptorSetLayout descriptor_set_layout, VkDescriptorSet& descriptor_set) {
     const VkDescriptorSetAllocateInfo allocate_info{
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -348,11 +311,11 @@ bool Device::updateBuffer(const void* data, VkDeviceSize data_size, VkBuffer dst
 
     if (!waitForFences(std::array{kit.fence}, VK_FALSE, 500000000)) { return false; }
 
-    if (kit.staging_buffer.getSize() < data_size) {
-        if (!kit.staging_buffer.create(data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, true)) { return false; }
+    if (kit.staging_buffer.size < data_size) {
+        if (!createStagingBuffer(data_size, kit.staging_buffer)) { return false; }
     }
 
-    VkResult result = vmaCopyMemoryToAllocation(vma_allocator_, data, kit.staging_buffer.getAllocation(), 0, data_size);
+    VkResult result = vmaCopyMemoryToAllocation(vma_allocator_, data, kit.staging_buffer.allocation, 0, data_size);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't copy to host visible memory: {}", result);
         return false;
@@ -371,7 +334,7 @@ bool Device::updateBuffer(const void* data, VkDeviceSize data_size, VkBuffer dst
                                                   }),
                                               });
 
-    kit.command_buffer.copyBuffer(~kit.staging_buffer, dst,
+    kit.command_buffer.copyBuffer(kit.staging_buffer.handle, dst,
                                   std::array{
                                       VkBufferCopy{.dstOffset = offset, .size = data_size},
                                   });
@@ -408,11 +371,11 @@ bool Device::updateImage(const void* data, VkDeviceSize data_size, VkImage dst, 
 
     if (!waitForFences(std::array{kit.fence}, VK_FALSE, 500000000)) { return false; }
 
-    if (kit.staging_buffer.getSize() < data_size) {
-        if (!kit.staging_buffer.create(data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, true)) { return false; }
+    if (kit.staging_buffer.size < data_size) {
+        if (!createStagingBuffer(data_size, kit.staging_buffer)) { return false; }
     }
 
-    VkResult result = vmaCopyMemoryToAllocation(vma_allocator_, data, kit.staging_buffer.getAllocation(), 0, data_size);
+    VkResult result = vmaCopyMemoryToAllocation(vma_allocator_, data, kit.staging_buffer.allocation, 0, data_size);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't copy to host visible memory: {}", result);
         return false;
@@ -434,7 +397,7 @@ bool Device::updateImage(const void* data, VkDeviceSize data_size, VkImage dst, 
                                                  }),
                                              });
 
-    kit.command_buffer.copyBufferToImage(~kit.staging_buffer, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+    kit.command_buffer.copyBufferToImage(kit.staging_buffer.handle, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                          std::array{
                                              VkBufferImageCopy{
                                                  .imageSubresource = subresource,
@@ -470,70 +433,111 @@ bool Device::updateImage(const void* data, VkDeviceSize data_size, VkImage dst, 
 
 //@{ IDevice
 
-IShaderModule* Device::createShaderModule(std::span<const std::uint32_t> source) {
-    auto shader_module = std::make_unique<ShaderModule>(*this);
+bool Device::waitDevice() {
+    VkResult result = vkDeviceWaitIdle(device_);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "waiting for device failed: {}", result);
+        return false;
+    }
+    return true;
+}
+
+util::ref_ptr<IShaderModule> Device::createShaderModule(std::span<const std::uint32_t> source) {
+    util::ref_ptr shader_module = ::new ShaderModule(*this);
     if (!shader_module->create(source)) { return nullptr; }
-    return shader_modules_.emplace_back(std::move(shader_module)).get();
+    return std::move(shader_module);
 }
 
-IPipelineLayout* Device::createPipelineLayout(const uxs::db::value& config) {
-    auto pipeline_layout = std::make_unique<PipelineLayout>(*this);
+util::ref_ptr<IPipelineLayout> Device::createPipelineLayout(const uxs::db::value& config) {
+    util::ref_ptr pipeline_layout = ::new PipelineLayout(*this);
     if (!pipeline_layout->create(config)) { return nullptr; }
-    return pipeline_layouts_.emplace_back(std::move(pipeline_layout)).get();
+    return std::move(pipeline_layout);
 }
 
-IPipeline* Device::createPipeline(IRenderTarget& render_target, IPipelineLayout& pipeline_layout,
-                                  std::span<IShaderModule* const> shader_modules, const uxs::db::value& config) {
-    auto pipeline = std::make_unique<Pipeline>(*this, static_cast<PipelineLayout&>(pipeline_layout));
-    if (!pipeline->create(static_cast<RenderTarget&>(render_target), shader_modules, config)) { return nullptr; }
-    return pipelines_.emplace_back(std::move(pipeline)).get();
+util::ref_ptr<IPipeline> Device::createPipeline(IRenderTarget& render_target, IPipelineLayout& pipeline_layout,
+                                                std::span<IShaderModule* const> shader_modules,
+                                                const uxs::db::value& config) {
+    util::ref_ptr pipeline = ::new Pipeline(*this, static_cast<RenderTarget&>(render_target),
+                                            static_cast<PipelineLayout&>(pipeline_layout));
+    if (!pipeline->create(shader_modules, config)) { return nullptr; }
+    return std::move(pipeline);
 }
 
-IBuffer* Device::createBuffer(std::size_t size, BufferType type) {
+util::ref_ptr<IBuffer> Device::createBuffer(std::size_t size, BufferType type) {
     constexpr std::array usage{
         VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
     };
-    auto buffer = std::make_unique<Buffer>(*this);
+    util::ref_ptr buffer = ::new Buffer(*this);
     if (!buffer->create(size, usage[unsigned(type)] | VK_BUFFER_USAGE_TRANSFER_DST_BIT)) { return nullptr; }
-    return buffers_.emplace_back(std::move(buffer)).get();
+    return std::move(buffer);
 }
 
-ITexture* Device::createTexture(Extent3u extent) {
-    auto texture = std::make_unique<Texture>(*this);
+util::ref_ptr<ITexture> Device::createTexture(Extent3u extent) {
+    util::ref_ptr texture = ::new Texture(*this);
     if (!texture->create(VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_UNORM,
                          {.width = extent.width, .height = extent.height, .depth = extent.depth}, 1, 1,
                          VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, false, VK_IMAGE_VIEW_TYPE_2D)) {
         return nullptr;
     }
-    return textures_.emplace_back(std::move(texture)).get();
+    return std::move(texture);
 }
 
-ISampler* Device::createSampler() {
-    auto sampler = std::make_unique<Sampler>(*this);
+util::ref_ptr<ISampler> Device::createSampler() {
+    util::ref_ptr sampler = ::new Sampler(*this);
     if (!sampler->create(VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST,
                          VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
                          VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, 0.0f, false, 1.0f, false, VK_COMPARE_OP_ALWAYS, 0.0f,
                          1.0f, VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK, false)) {
         return nullptr;
     }
-    return samplers_.emplace_back(std::move(sampler)).get();
+    return std::move(sampler);
 }
 
-IDescriptorSet* Device::createDescriptorSet(IPipelineLayout& pipeline_layout) {
-    auto descriptor_set = std::make_unique<DescriptorSet>(*this, static_cast<PipelineLayout&>(pipeline_layout));
+util::ref_ptr<IDescriptorSet> Device::createDescriptorSet(IPipelineLayout& pipeline_layout) {
+    util::ref_ptr descriptor_set = ::new DescriptorSet(*this, static_cast<PipelineLayout&>(pipeline_layout));
     if (!descriptor_set->create()) { return nullptr; }
-    return descriptor_sets_.emplace_back(std::move(descriptor_set)).get();
+    return std::move(descriptor_set);
 }
 
 //@}
 
-bool Device::createDescriptorPool(std::uint32_t max_sets_count, std::span<const VkDescriptorPoolSize> descriptor_types,
+bool Device::createStagingBuffer(VkDeviceSize size, StagingBuffer& buffer) {
+    const VkBufferCreateInfo create_info{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = size,
+        .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    };
+
+    const VmaAllocationCreateInfo alloc_info{
+        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
+        .usage = VMA_MEMORY_USAGE_AUTO,
+    };
+
+    if (buffer.handle != VK_NULL_HANDLE) {
+        vmaDestroyBuffer(vma_allocator_, buffer.handle, buffer.allocation);
+        buffer.handle = VK_NULL_HANDLE;
+        buffer.allocation = VK_NULL_HANDLE;
+    }
+
+    VkResult result = vmaCreateBuffer(vma_allocator_, &create_info, &alloc_info, &buffer.handle, &buffer.allocation,
+                                      nullptr);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't create buffer: {}", result);
+        return false;
+    }
+
+    buffer.size = size;
+    return true;
+}
+
+bool Device::createDescriptorPool(std::uint32_t max_sets, std::span<const VkDescriptorPoolSize> descriptor_types,
                                   VkDescriptorPool& descriptor_pool) {
     const VkDescriptorPoolCreateInfo create_info{
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
-        .maxSets = max_sets_count,
+        .maxSets = max_sets,
         .poolSizeCount = std::uint32_t(descriptor_types.size()),
         .pPoolSizes = descriptor_types.data(),
     };

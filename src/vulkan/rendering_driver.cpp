@@ -17,10 +17,7 @@ using namespace app3d::rel::vulkan;
 RenderingDriver::RenderingDriver() {}
 
 RenderingDriver::~RenderingDriver() {
-    if (device_) { device_->finalize(); }
-    destroySwapChains();
-    device_.reset();
-    surfaces_.clear();
+    logDebug("destroy RenderingDriver");
     ObjectDestroyer<VkInstance>::destroy(instance_);
     if (vulkan_library_) { freeDynamicLibrary(vulkan_library_); }
 }
@@ -29,10 +26,6 @@ bool RenderingDriver::isExtensionSupported(const char* extension) const {
     return std::ranges::any_of(extensions_, [extension](const auto& item) {
         return std::string_view(extension) == std::string_view(item.extensionName);
     });
-}
-
-void RenderingDriver::destroySwapChains() {
-    for (const auto& surface : surfaces_) { surface->destroySwapChain(); }
 }
 
 //@{ IRenderingDriver
@@ -57,18 +50,19 @@ bool RenderingDriver::isSuitablePhysicalDevice(std::uint32_t device_index, const
     return physical_devices_[device_index]->isSuitableDevice(caps);
 }
 
-ISurface* RenderingDriver::createSurface(const WindowDescriptor& win_desc) {
-    auto surfaces = std::make_unique<Surface>(*this);
-    if (!surfaces->create(win_desc)) { return nullptr; }
-    return surfaces_.emplace_back(std::move(surfaces)).get();
+util::ref_ptr<ISurface> RenderingDriver::createSurface(const WindowDescriptor& win_desc) {
+    util::ref_ptr surface = ::new Surface(*this);
+    if (!surface->create(win_desc)) { return nullptr; }
+    surfaces_.push_back(surface.get());
+    return std::move(surface);
 }
 
-IDevice* RenderingDriver::createDevice(std::uint32_t device_index, const uxs::db::value& caps) {
+util::ref_ptr<IDevice> RenderingDriver::createDevice(std::uint32_t device_index, const uxs::db::value& caps) {
     assert(!surfaces_.empty());
 
     auto& physical_device = *physical_devices_[device_index];
 
-    for (const auto& surface : surfaces_) {
+    for (auto* surface : surfaces_) {
         if (!surface->loadCapabilities(physical_device)) { return nullptr; }
         if (!surface->loadFormats(physical_device)) { return nullptr; }
         if (!surface->loadPresentQueueFamilies(physical_device)) { return nullptr; }
@@ -76,10 +70,9 @@ IDevice* RenderingDriver::createDevice(std::uint32_t device_index, const uxs::db
         if (!surface->checkAndSelectSurfaceFeatures()) { return nullptr; }
     }
 
-    auto device = std::make_unique<Device>(*this, physical_device);
+    util::ref_ptr device = ::new Device(*this, physical_device);
     if (!device->create(caps)) { return nullptr; }
-    device_ = std::move(device);
-    return device_.get();
+    return std::move(device);
 }
 
 //@}

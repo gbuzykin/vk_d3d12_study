@@ -8,6 +8,7 @@
 #include <array>
 #include <chrono>
 #include <cstdlib>
+#include <memory>
 
 using namespace app3d;
 

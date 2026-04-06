@@ -20,11 +20,11 @@ SwapChain::SwapChain(Device& device, Surface& surface) : device_(device), surfac
 
 SwapChain::~SwapChain() {
     for (auto& kit : present_kits_) {
-        device_.getPresentQueue().releaseCommandBuffer(~kit.command_buffer);
-        ObjectDestroyer<VkSemaphore>::destroy(~device_, kit.sem_ready_to_present);
+        device_.get().getPresentQueue().releaseCommandBuffer(~kit.command_buffer);
+        ObjectDestroyer<VkSemaphore>::destroy(~device_.get(), kit.sem_ready_to_present);
     }
     destroyImageViews();
-    ObjectDestroyer<VkSwapchainKHR>::destroy(~device_, swap_chain_);
+    ObjectDestroyer<VkSwapchainKHR>::destroy(~device_.get(), swap_chain_);
 }
 
 std::uint32_t SwapChain::chooseImageCount(const VkSurfaceCapabilitiesKHR& capabilities, const uxs::db::value& opts) {
@@ -101,10 +101,10 @@ VkSurfaceFormatKHR SwapChain::chooseImageFormat(std::span<const VkSurfaceFormatK
 }
 
 bool SwapChain::create(const uxs::db::value& opts) {
-    device_.waitDevice();
-    if (!surface_.loadCapabilities(device_.getPhysicalDevice())) { return false; }
+    device_.get().waitDevice();
+    if (!surface_.get().loadCapabilities(device_.get().getPhysicalDevice())) { return false; }
 
-    const auto& capabilities = surface_.getCapabilities();
+    const auto& capabilities = surface_.get().getCapabilities();
 
     const std::uint32_t image_count = chooseImageCount(capabilities, opts);
     image_extent_ = chooseImageExtent(capabilities, opts);
@@ -122,36 +122,36 @@ bool SwapChain::create(const uxs::db::value& opts) {
 
     const VkSwapchainCreateInfoKHR create_info{
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-        .surface = ~surface_,
+        .surface = ~surface_.get(),
         .minImageCount = image_count,
-        .imageFormat = surface_.getImageFormat().format,
-        .imageColorSpace = surface_.getImageFormat().colorSpace,
+        .imageFormat = surface_.get().getImageFormat().format,
+        .imageColorSpace = surface_.get().getImageFormat().colorSpace,
         .imageExtent = image_extent_,
         .imageArrayLayers = layer_count,
-        .imageUsage = surface_.getImageUsage(),
+        .imageUsage = surface_.get().getImageUsage(),
         .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
         .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
         .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-        .presentMode = surface_.getPresentMode(),
+        .presentMode = surface_.get().getPresentMode(),
         .clipped = VK_TRUE,
         .oldSwapchain = swap_chain_,
     };
 
     const VkSwapchainKHR old_swap_chain = swap_chain_;
-    VkResult result = vkCreateSwapchainKHR(~device_, &create_info, nullptr, &swap_chain_);
+    VkResult result = vkCreateSwapchainKHR(~device_.get(), &create_info, nullptr, &swap_chain_);
     if (result != VK_SUCCESS || swap_chain_ == VK_NULL_HANDLE) {
         logError(LOG_VK "couldn't create swap chain: {}", result);
         return false;
     }
 
-    ObjectDestroyer<VkSwapchainKHR>::destroy(~device_, old_swap_chain);
+    ObjectDestroyer<VkSwapchainKHR>::destroy(~device_.get(), old_swap_chain);
 
     if (present_kits_.empty()) {
-        auto& present_queue = device_.getPresentQueue();
-        if (present_queue.getFamilyIndex() != device_.getGraphicsQueue().getFamilyIndex()) {
+        auto& present_queue = device_.get().getPresentQueue();
+        if (present_queue.getFamilyIndex() != device_.get().getGraphicsQueue().getFamilyIndex()) {
             present_kits_.resize(getFifCount());
             for (auto& kit : present_kits_) {
-                if (!device_.createSemaphore(kit.sem_ready_to_present)) { return false; }
+                if (!device_.get().createSemaphore(kit.sem_ready_to_present)) { return false; }
                 VkCommandBuffer command_buffer = VK_NULL_HANDLE;
                 if (!present_queue.obtainCommandBuffer(command_buffer)) { return false; }
                 kit.command_buffer = CommandBuffer::wrap(command_buffer);
@@ -166,7 +166,7 @@ bool SwapChain::create(const uxs::db::value& opts) {
     return true;
 }
 
-VkFormat SwapChain::getImageFormat() const { return surface_.getImageFormat().format; }
+VkFormat SwapChain::getImageFormat() const { return surface_.get().getImageFormat().format; }
 
 VkPipelineStageFlags SwapChain::getImageConsumingStages() const { return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT; }
 
@@ -177,8 +177,8 @@ VkImageLayout SwapChain::getImageLayout() const { return VK_IMAGE_LAYOUT_PRESENT
 void SwapChain::imageBarrierBefore(CommandBuffer& command_buffer, std::uint32_t image_index) {}
 
 bool SwapChain::imageBarrierAfter(CommandBuffer& command_buffer, std::uint32_t image_index) {
-    const auto& graphics_queue = device_.getGraphicsQueue();
-    const auto& present_queue = device_.getPresentQueue();
+    const auto& graphics_queue = device_.get().getGraphicsQueue();
+    const auto& present_queue = device_.get().getPresentQueue();
     if (graphics_queue.getFamilyIndex() == present_queue.getFamilyIndex()) { return false; }
     command_buffer.setImageMemoryBarrier(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                                          VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
@@ -198,7 +198,8 @@ bool SwapChain::imageBarrierAfter(CommandBuffer& command_buffer, std::uint32_t i
 }
 
 RenderTargetResult SwapChain::acquireImage(std::uint64_t timeout, VkSemaphore semaphore, std::uint32_t& image_index) {
-    VkResult result = vkAcquireNextImageKHR(~device_, swap_chain_, timeout, semaphore, VK_NULL_HANDLE, &image_index);
+    VkResult result = vkAcquireNextImageKHR(~device_.get(), swap_chain_, timeout, semaphore, VK_NULL_HANDLE,
+                                            &image_index);
     if (result == VK_SUCCESS) { return RenderTargetResult::SUCCESS; }
     if (result == VK_SUBOPTIMAL_KHR) { return RenderTargetResult::SUBOPTIMAL; }
     if (result == VK_ERROR_OUT_OF_DATE_KHR) { return RenderTargetResult::OUT_OF_DATE; }
@@ -207,8 +208,8 @@ RenderTargetResult SwapChain::acquireImage(std::uint64_t timeout, VkSemaphore se
 
 RenderTargetResult SwapChain::presentImage(std::uint32_t n_frame, std::uint32_t image_index, VkSemaphore wait_semaphore,
                                            VkFence fence) {
-    const auto& graphics_queue = device_.getGraphicsQueue();
-    const auto& present_queue = device_.getPresentQueue();
+    const auto& graphics_queue = device_.get().getGraphicsQueue();
+    const auto& present_queue = device_.get().getPresentQueue();
 
     VkSemaphore ready_to_present = wait_semaphore;
 
@@ -236,7 +237,7 @@ RenderTargetResult SwapChain::presentImage(std::uint32_t n_frame, std::uint32_t 
 
         if (!command_buffer.endCommandBuffer()) { return RenderTargetResult::FAILED; }
 
-        if (!device_.getPresentQueue().submitCommandBuffers(
+        if (!device_.get().getPresentQueue().submitCommandBuffers(
                 {std::array{wait_semaphore}, std::array{VkPipelineStageFlags(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT)}},
                 std::array{~command_buffer}, std::array{kit.sem_ready_to_present}, fence)) {
             return RenderTargetResult::FAILED;
@@ -245,29 +246,35 @@ RenderTargetResult SwapChain::presentImage(std::uint32_t n_frame, std::uint32_t 
         ready_to_present = kit.sem_ready_to_present;
     }
 
-    return device_.getPresentQueue().presentImages(std::array{ready_to_present},
-                                                   {std::array{swap_chain_}, std::array{image_index}});
+    return device_.get().getPresentQueue().presentImages(std::array{ready_to_present},
+                                                         {std::array{swap_chain_}, std::array{image_index}});
+}
+
+void SwapChain::removeRenderTarget(RenderTarget* render_target) {
+    if (render_target_ == render_target) { render_target_ = nullptr; }
 }
 
 //@{ ISwapChain
 
-IRenderTarget* SwapChain::createRenderTarget(const uxs::db::value& opts) {
-    render_target_ = device_.createRenderTarget(*this, opts);
-    return render_target_;
+util::ref_ptr<IRenderTarget> SwapChain::createRenderTarget(const uxs::db::value& opts) {
+    util::ref_ptr render_target = ::new RenderTarget(device_, *this);
+    if (!render_target->create(opts)) { return nullptr; }
+    render_target_ = render_target.get();
+    return std::move(render_target);
 }
 
 //@}
 
 bool SwapChain::loadImageHandles() {
     std::uint32_t image_count = 0;
-    VkResult result = vkGetSwapchainImagesKHR(~device_, swap_chain_, &image_count, nullptr);
+    VkResult result = vkGetSwapchainImagesKHR(~device_.get(), swap_chain_, &image_count, nullptr);
     if (result != VK_SUCCESS || image_count == 0) {
         logError(LOG_VK "couldn't get the number of swap chain images: {}", result);
         return false;
     }
 
     images_.resize(image_count, VK_NULL_HANDLE);
-    result = vkGetSwapchainImagesKHR(~device_, swap_chain_, &image_count, images_.data());
+    result = vkGetSwapchainImagesKHR(~device_.get(), swap_chain_, &image_count, images_.data());
     if (result != VK_SUCCESS || image_count == 0) {
         logError(LOG_VK "couldn't enumerate swap_chain images: {}", result);
         return false;
@@ -284,7 +291,7 @@ bool SwapChain::createImageViews() {
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image = images_[n],
             .viewType = VK_IMAGE_VIEW_TYPE_2D,
-            .format = surface_.getImageFormat().format,
+            .format = surface_.get().getImageFormat().format,
             .subresourceRange =
                 {
                     .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -295,7 +302,7 @@ bool SwapChain::createImageViews() {
                 },
         };
 
-        VkResult result = vkCreateImageView(~device_, &create_info, nullptr, &image_views_[n]);
+        VkResult result = vkCreateImageView(~device_.get(), &create_info, nullptr, &image_views_[n]);
         if (result != VK_SUCCESS) {
             logError(LOG_VK "couldn't create image view for swap chain image: {}", result);
             return false;
@@ -306,6 +313,6 @@ bool SwapChain::createImageViews() {
 }
 
 void SwapChain::destroyImageViews() {
-    for (const auto& view : image_views_) { ObjectDestroyer<VkImageView>::destroy(~device_, view); }
+    for (const auto& view : image_views_) { ObjectDestroyer<VkImageView>::destroy(~device_.get(), view); }
     image_views_.clear();
 }

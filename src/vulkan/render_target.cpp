@@ -20,15 +20,16 @@ RenderTarget::RenderTarget(Device& device, ImageProvider& image_provider)
     : device_(device), image_provider_(image_provider) {}
 
 RenderTarget::~RenderTarget() {
+    image_provider_.get().removeRenderTarget(this);
     destroyFrameResources();
     for (auto& kit : frame_render_kits_) {
-        device_.getGraphicsQueue().releaseCommandBuffer(~kit.command_buffer);
-        ObjectDestroyer<VkFence>::destroy(~device_, kit.fence);
-        ObjectDestroyer<VkSemaphore>::destroy(~device_, kit.sem_image_acquired);
-        ObjectDestroyer<VkSemaphore>::destroy(~device_, kit.sem_rendering_complete);
+        device_.get().getGraphicsQueue().releaseCommandBuffer(~kit.command_buffer);
+        ObjectDestroyer<VkFence>::destroy(~device_.get(), kit.fence);
+        ObjectDestroyer<VkSemaphore>::destroy(~device_.get(), kit.sem_image_acquired);
+        ObjectDestroyer<VkSemaphore>::destroy(~device_.get(), kit.sem_rendering_complete);
     }
     frame_render_kits_.clear();
-    ObjectDestroyer<VkRenderPass>::destroy(~device_, render_pass_);
+    ObjectDestroyer<VkRenderPass>::destroy(~device_.get(), render_pass_);
 }
 
 bool RenderTarget::create(const uxs::db::value& opts) {
@@ -37,14 +38,14 @@ bool RenderTarget::create(const uxs::db::value& opts) {
     uxs::inline_dynarray<VkAttachmentDescription, 2> attachments_descriptions;
 
     attachments_descriptions.push_back(VkAttachmentDescription{
-        .format = image_provider_.getImageFormat(),
+        .format = image_provider_.get().getImageFormat(),
         .samples = VK_SAMPLE_COUNT_1_BIT,
         .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
         .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
         .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .finalLayout = image_provider_.getImageLayout(),
+        .finalLayout = image_provider_.get().getImageLayout(),
     });
 
     if (use_depth_) {
@@ -92,9 +93,9 @@ bool RenderTarget::create(const uxs::db::value& opts) {
             .srcSubpass = 0,
             .dstSubpass = VK_SUBPASS_EXTERNAL,
             .srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .dstStageMask = image_provider_.getImageConsumingStages(),
+            .dstStageMask = image_provider_.get().getImageConsumingStages(),
             .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-            .dstAccessMask = image_provider_.getImageAccess(),
+            .dstAccessMask = image_provider_.get().getImageAccess(),
             .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
         },
     };
@@ -109,29 +110,31 @@ bool RenderTarget::create(const uxs::db::value& opts) {
         .pDependencies = subpass_dependencies.data(),
     };
 
-    VkResult result = vkCreateRenderPass(~device_, &create_info, nullptr, &render_pass_);
+    VkResult result = vkCreateRenderPass(~device_.get(), &create_info, nullptr, &render_pass_);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create render pass: {}", result);
         return false;
     }
 
-    frame_render_kits_.resize(image_provider_.getFifCount());
+    frame_render_kits_.resize(image_provider_.get().getFifCount());
     for (auto& kit : frame_render_kits_) {
-        if (!device_.createSemaphore(kit.sem_image_acquired)) { return false; }
-        if (!device_.createSemaphore(kit.sem_rendering_complete)) { return false; }
-        if (!device_.createFence(true, kit.fence)) { return false; }
+        if (!device_.get().createSemaphore(kit.sem_image_acquired)) { return false; }
+        if (!device_.get().createSemaphore(kit.sem_rendering_complete)) { return false; }
+        if (!device_.get().createFence(true, kit.fence)) { return false; }
         VkCommandBuffer command_buffer = VK_NULL_HANDLE;
-        if (!device_.getGraphicsQueue().obtainCommandBuffer(command_buffer)) { return false; }
+        if (!device_.get().getGraphicsQueue().obtainCommandBuffer(command_buffer)) { return false; }
         kit.command_buffer = CommandBuffer::wrap(command_buffer);
     }
+
+    if (!createFrameResources()) { return false; }
 
     return true;
 }
 
 bool RenderTarget::createFrameResources() {
-    image_extent_ = image_provider_.getImageExtent();
+    image_extent_ = image_provider_.get().getImageExtent();
 
-    const std::uint32_t image_count = image_provider_.getImageCount();
+    const std::uint32_t image_count = image_provider_.get().getImageCount();
 
     frame_resources_.resize(image_count);
 
@@ -139,7 +142,7 @@ bool RenderTarget::createFrameResources() {
         auto& res = frame_resources_[n];
 
         uxs::inline_dynarray<VkImageView, 2> attachments;
-        attachments.push_back(image_provider_.getImageView(n));
+        attachments.push_back(image_provider_.get().getImageView(n));
 
         if (use_depth_) {
             const VkImageCreateInfo create_info{
@@ -158,7 +161,7 @@ bool RenderTarget::createFrameResources() {
 
             const VmaAllocationCreateInfo alloc_info{.usage = VMA_MEMORY_USAGE_AUTO};
 
-            VkResult result = vmaCreateImage(device_.getAllocator(), &create_info, &alloc_info, &res.depth_image,
+            VkResult result = vmaCreateImage(device_.get().getAllocator(), &create_info, &alloc_info, &res.depth_image,
                                              &res.depth_allocation, nullptr);
             if (result != VK_SUCCESS) {
                 logError(LOG_VK "couldn't create depth buffer: {}", result);
@@ -180,7 +183,7 @@ bool RenderTarget::createFrameResources() {
                     },
             };
 
-            result = vkCreateImageView(~device_, &view_create_info, nullptr, &res.depth_image_view);
+            result = vkCreateImageView(~device_.get(), &view_create_info, nullptr, &res.depth_image_view);
             if (result != VK_SUCCESS) {
                 logError(LOG_VK "couldn't create depth buffer view: {}", result);
                 return false;
@@ -199,7 +202,7 @@ bool RenderTarget::createFrameResources() {
             .layers = 1,
         };
 
-        VkResult result = vkCreateFramebuffer(~device_, &framebuffer_create_info, nullptr,
+        VkResult result = vkCreateFramebuffer(~device_.get(), &framebuffer_create_info, nullptr,
                                               &frame_resources_[n].framebuffer);
         if (result != VK_SUCCESS) {
             logError(LOG_VK "couldn't create framebuffer: {}", result);
@@ -213,9 +216,9 @@ bool RenderTarget::createFrameResources() {
 
 void RenderTarget::destroyFrameResources() {
     for (const auto& item : frame_resources_) {
-        ObjectDestroyer<VkFramebuffer>::destroy(~device_, item.framebuffer);
-        ObjectDestroyer<VkImageView>::destroy(~device_, item.depth_image_view);
-        vmaDestroyImage(device_.getAllocator(), item.depth_image, item.depth_allocation);
+        ObjectDestroyer<VkFramebuffer>::destroy(~device_.get(), item.framebuffer);
+        ObjectDestroyer<VkImageView>::destroy(~device_.get(), item.depth_image_view);
+        vmaDestroyImage(device_.get().getAllocator(), item.depth_image, item.depth_allocation);
     }
     frame_resources_.clear();
 }
@@ -228,17 +231,17 @@ RenderTargetResult RenderTarget::beginRenderTarget(const Color4f& clear_color, f
     if (++n_frame_ == frame_render_kits_.size()) { n_frame_ = 0; }
     auto& kit = frame_render_kits_[n_frame_];
 
-    if (!device_.waitForFences(std::array{kit.fence}, false, 5000000000)) { return RenderTargetResult::FAILED; }
+    if (!device_.get().waitForFences(std::array{kit.fence}, false, 5000000000)) { return RenderTargetResult::FAILED; }
 
     std::uint32_t image_index = 0;
-    render_target_status_ = image_provider_.acquireImage(2000000000, kit.sem_image_acquired, image_index);
+    render_target_status_ = image_provider_.get().acquireImage(2000000000, kit.sem_image_acquired, image_index);
     if (render_target_status_ > RenderTargetResult::SUBOPTIMAL) { return render_target_status_; }
 
     if (!kit.command_buffer.beginCommandBuffer(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) {
         return RenderTargetResult::FAILED;
     }
 
-    image_provider_.imageBarrierBefore(kit.command_buffer, image_index);
+    image_provider_.get().imageBarrierBefore(kit.command_buffer, image_index);
 
     uxs::inline_dynarray<VkClearValue, 2> clear_values;
     clear_values.push_back(VkClearValue{.color = {{clear_color.r, clear_color.g, clear_color.b, clear_color.a}}});
@@ -261,13 +264,13 @@ bool RenderTarget::endRenderTarget() {
 
     kit.command_buffer.endRenderPass();
 
-    const bool queue_family_transition = image_provider_.imageBarrierAfter(kit.command_buffer, image_index);
+    const bool queue_family_transition = image_provider_.get().imageBarrierAfter(kit.command_buffer, image_index);
 
     if (!kit.command_buffer.endCommandBuffer()) { return false; }
 
-    if (!device_.resetFences(std::array{kit.fence})) { return false; }
+    if (!device_.get().resetFences(std::array{kit.fence})) { return false; }
 
-    if (!device_.getGraphicsQueue().submitCommandBuffers(
+    if (!device_.get().getGraphicsQueue().submitCommandBuffers(
             {std::array{kit.sem_image_acquired},
              std::array{VkPipelineStageFlags(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)}},
             std::array{~kit.command_buffer}, std::array{kit.sem_rendering_complete},
@@ -275,7 +278,8 @@ bool RenderTarget::endRenderTarget() {
         return false;
     }
 
-    render_target_status_ = image_provider_.presentImage(n_frame_, image_index, kit.sem_rendering_complete, kit.fence);
+    render_target_status_ = image_provider_.get().presentImage(n_frame_, image_index, kit.sem_rendering_complete,
+                                                               kit.fence);
 
     return render_target_status_ <= RenderTargetResult::OUT_OF_DATE;
 }

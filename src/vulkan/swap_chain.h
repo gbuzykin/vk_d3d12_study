@@ -16,8 +16,6 @@ class SwapChain final : public ImageProvider, public ISwapChain {
  public:
     SwapChain(Device& device, Surface& surface);
     ~SwapChain() override;
-    SwapChain(const SwapChain&) = delete;
-    SwapChain& operator=(const SwapChain&) = delete;
 
     static std::uint32_t chooseImageCount(const VkSurfaceCapabilitiesKHR& capabilities, const uxs::db::value& opts);
     static VkExtent2D chooseImageExtent(const VkSurfaceCapabilitiesKHR& capabilities, const uxs::db::value& opts);
@@ -44,15 +42,21 @@ class SwapChain final : public ImageProvider, public ISwapChain {
     RenderTargetResult acquireImage(std::uint64_t timeout, VkSemaphore semaphore, std::uint32_t& image_index) override;
     RenderTargetResult presentImage(std::uint32_t n_frame, std::uint32_t image_index, VkSemaphore wait_semaphore,
                                     VkFence fence) override;
+    void removeRenderTarget(RenderTarget* render_target) override;
+    //@}
+
+    //@{ IUnknown
+    util::ref_counter& getRefCounter() override { return *this; }
     //@}
 
     //@{ ISwapChain
-    IRenderTarget* createRenderTarget(const uxs::db::value& opts) override;
+    bool recreate(const uxs::db::value& opts) override { return create(opts); }
+    util::ref_ptr<IRenderTarget> createRenderTarget(const uxs::db::value& opts) override;
     //@}
 
  private:
-    Device& device_;
-    Surface& surface_;
+    util::reference<Device> device_;
+    util::reference<Surface> surface_;
     VkSwapchainKHR swap_chain_{VK_NULL_HANDLE};
     VkExtent2D image_extent_{};
     uxs::inline_dynarray<VkImage, 3> images_;

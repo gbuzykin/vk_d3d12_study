@@ -39,7 +39,7 @@ std::chrono::seconds currentTimeZoneOffset() {
 }
 }  // namespace
 
-void app3d::setPrintLevel(LogLevel level) { g_current_print_level = level; }
+void app3d::setLogLevel(LogLevel level) { g_current_print_level = level; }
 
 void app3d::detail::vprint(LogLevel level, std::string_view fmt, uxs::format_args args) {
     if (level > g_current_print_level) { return; }

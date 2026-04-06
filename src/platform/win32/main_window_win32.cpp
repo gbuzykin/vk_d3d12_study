@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <memory>
 
 #ifdef min
 #    undef min
