@@ -10,14 +10,11 @@ namespace app3d::rel::vulkan {
 
 class RenderingDriver;
 class PhysicalDevice;
-class SwapChain;
 
-class Surface final : public ISurface {
+class Surface final : public util::ref_counter, public ISurface {
  public:
     explicit Surface(RenderingDriver& instance);
     ~Surface() override;
-    Surface(const Surface&) = delete;
-    Surface& operator=(const Surface&) = delete;
 
     std::uint32_t getPresentQueueFamily(std::uint32_t n = 0) const;
     const VkSurfaceCapabilitiesKHR& getCapabilities() const { return capabilities_; }
@@ -31,16 +28,16 @@ class Surface final : public ISurface {
     bool loadPresentQueueFamilies(PhysicalDevice& physical_device);
     bool loadPresentModes(PhysicalDevice& physical_device);
     bool checkAndSelectSurfaceFeatures();
-    void destroySwapChain();
 
     VkSurfaceKHR operator~() { return surface_; }
 
     //@{ ISurface
-    ISwapChain* createSwapChain(IDevice& device, const uxs::db::value& opts) override;
+    util::ref_counter& getRefCounter() override { return *this; }
+    util::ref_ptr<ISwapChain> createSwapChain(IDevice& device, const uxs::db::value& opts) override;
     //@}
 
  private:
-    RenderingDriver& instance_;
+    util::ref_ptr<RenderingDriver> instance_;
     VkSurfaceKHR surface_{VK_NULL_HANDLE};
     VkSurfaceCapabilitiesKHR capabilities_{};
     std::vector<VkSurfaceFormatKHR> formats_;
@@ -49,7 +46,6 @@ class Surface final : public ISurface {
     VkImageUsageFlags image_usage_{};
     VkSurfaceFormatKHR selected_format_{};
     VkPresentModeKHR selected_present_mode_{};
-    std::unique_ptr<SwapChain> swap_chain_;
 };
 
 }  // namespace app3d::rel::vulkan

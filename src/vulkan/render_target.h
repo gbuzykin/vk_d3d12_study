@@ -10,12 +10,10 @@ class Device;
 class FrameImageProvider;
 class Pipeline;
 
-class RenderTarget final : public IRenderTarget {
+class RenderTarget final : public util::ref_counter, public IRenderTarget {
  public:
     RenderTarget(Device& device, FrameImageProvider& image_provider);
     ~RenderTarget() override;
-    RenderTarget(const RenderTarget&) = delete;
-    RenderTarget& operator=(const RenderTarget&) = delete;
 
     bool useDepth() const { return use_depth_; }
 
@@ -26,6 +24,7 @@ class RenderTarget final : public IRenderTarget {
     VkRenderPass getRenderPass() { return render_pass_; }
 
     //@{ IRenderTarget
+    util::ref_counter& getRefCounter() override { return *this; }
     Extent2u getImageExtent() const override { return {.width = image_extent_.width, .height = image_extent_.height}; }
     std::uint32_t getFifCount() const override { return std::uint32_t(frame_render_kits_.size()); }
     RenderTargetResult beginRenderTarget(const Color4f& clear_color, float depth, std::uint32_t stencil) override;
@@ -41,8 +40,8 @@ class RenderTarget final : public IRenderTarget {
     //@}
 
  private:
-    Device& device_;
-    FrameImageProvider& frame_image_provider_;
+    util::ref_ptr<Device> device_;
+    util::ref_ptr<FrameImageProvider> frame_image_provider_;
     bool use_depth_ = false;
     VkExtent2D image_extent_{};
     VkFormat depth_format_{VK_FORMAT_D16_UNORM};

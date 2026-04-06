@@ -13,12 +13,12 @@ using namespace app3d::rel::vulkan;
 // DescriptorSet class implementation
 
 DescriptorSet::DescriptorSet(Device& device, PipelineLayout& pipeline_layout)
-    : device_(device), pipeline_layout_(pipeline_layout) {}
+    : device_(util::not_null{&device}), pipeline_layout_(util::not_null{&pipeline_layout}) {}
 
-DescriptorSet::~DescriptorSet() { device_.releaseDescriptorSet(descriptor_set_); }
+DescriptorSet::~DescriptorSet() { device_->releaseDescriptorSet(descriptor_set_); }
 
 bool DescriptorSet::create() {
-    return device_.obtainDescriptorSet(pipeline_layout_.getDescriptorSetLayout(0), descriptor_set_);
+    return device_->obtainDescriptorSet(pipeline_layout_->getDescriptorSetLayout(0), descriptor_set_);
 }
 
 //@{ IDescriptorSet
@@ -31,12 +31,12 @@ void DescriptorSet::updateTextureSamplerDescriptor(ITexture& texture, ISampler& 
             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         },
     };
-    device_.updateDescriptorSets(
+    device_->updateDescriptorSets(
         std::array{
             VkWriteDescriptorSet{
                 .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .dstSet = descriptor_set_,
-                .dstBinding = pipeline_layout_.getBinding(PipelineLayout::BindingType::TEXTURE_SAMPLER, slot),
+                .dstBinding = pipeline_layout_->getBinding(PipelineLayout::BindingType::TEXTURE_SAMPLER, slot),
                 .dstArrayElement = 0,
                 .descriptorCount = std::uint32_t(image_infos.size()),
                 .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -54,12 +54,12 @@ void DescriptorSet::updateConstantBufferDescriptor(IBuffer& buffer, std::uint32_
             .range = VK_WHOLE_SIZE,
         },
     };
-    device_.updateDescriptorSets(
+    device_->updateDescriptorSets(
         std::array{
             VkWriteDescriptorSet{
                 .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .dstSet = descriptor_set_,
-                .dstBinding = pipeline_layout_.getBinding(PipelineLayout::BindingType::CONSTANT_BUFFER, slot),
+                .dstBinding = pipeline_layout_->getBinding(PipelineLayout::BindingType::CONSTANT_BUFFER, slot),
                 .dstArrayElement = 0,
                 .descriptorCount = std::uint32_t(buffer_infos.size()),
                 .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,

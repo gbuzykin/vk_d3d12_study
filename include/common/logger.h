@@ -11,7 +11,7 @@ namespace app3d {
 
 enum class LogLevel : unsigned { PR_ERROR = 0, PR_WARNING, PR_INFO, PR_DEBUG };
 
-APP3D_COMMON_EXPORT void setPrintLevel(LogLevel level);
+APP3D_COMMON_EXPORT void setLogLevel(LogLevel level);
 
 namespace detail {
 APP3D_COMMON_EXPORT void vprint(LogLevel level, std::string_view fmt, uxs::format_args args);

@@ -17,12 +17,12 @@ using namespace app3d::rel::vulkan;
 // --------------------------------------------------------
 // PipelineLayout class implementation
 
-PipelineLayout::PipelineLayout(Device& device) : device_(device) {}
+PipelineLayout::PipelineLayout(Device& device) : device_(util::not_null(&device)) {}
 
 PipelineLayout::~PipelineLayout() {
-    ObjectDestroyer<VkPipelineLayout>::destroy(~device_, pipeline_layout_);
+    ObjectDestroyer<VkPipelineLayout>::destroy(~*device_, pipeline_layout_);
     for (const auto& ds_layout : descriptor_set_layouts_) {
-        ObjectDestroyer<VkDescriptorSetLayout>::destroy(~device_, ds_layout);
+        ObjectDestroyer<VkDescriptorSetLayout>::destroy(~*device_, ds_layout);
     }
 }
 
@@ -69,7 +69,7 @@ bool PipelineLayout::create(const uxs::db::value& config) {
         };
 
         VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
-        VkResult result = vkCreateDescriptorSetLayout(~device_, &create_info, nullptr, &descriptor_set_layout);
+        VkResult result = vkCreateDescriptorSetLayout(~*device_, &create_info, nullptr, &descriptor_set_layout);
         if (result != VK_SUCCESS) {
             logError(LOG_VK "couldn't create layout for descriptor sets: {}", result);
             return false;
@@ -88,7 +88,7 @@ bool PipelineLayout::create(const uxs::db::value& config) {
         .pPushConstantRanges = push_constant_ranges.data(),
     };
 
-    VkResult result = vkCreatePipelineLayout(~device_, &create_info, nullptr, &pipeline_layout_);
+    VkResult result = vkCreatePipelineLayout(~*device_, &create_info, nullptr, &pipeline_layout_);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create pipeline layout: {}", result);
         return false;

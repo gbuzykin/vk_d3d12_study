@@ -9,26 +9,25 @@ namespace app3d::rel::vulkan {
 class Device;
 class PipelineLayout;
 
-class DescriptorSet final : public IDescriptorSet {
+class DescriptorSet final : public util::ref_counter, public IDescriptorSet {
  public:
     DescriptorSet(Device& device, PipelineLayout& pipeline_layout);
     ~DescriptorSet() override;
-    DescriptorSet(const DescriptorSet&) = delete;
-    DescriptorSet& operator=(const DescriptorSet&) = delete;
 
     bool create();
 
     VkDescriptorSet operator~() { return descriptor_set_; }
-    PipelineLayout& getLayout() { return pipeline_layout_; }
+    PipelineLayout& getLayout() { return *pipeline_layout_; }
 
     //@{ IDescriptorSet
+    util::ref_counter& getRefCounter() override { return *this; }
     void updateTextureSamplerDescriptor(ITexture& texture, ISampler& sampler, std::uint32_t slot) override;
     void updateConstantBufferDescriptor(IBuffer& buffer, std::uint32_t slot) override;
     //@}
 
  private:
-    Device& device_;
-    PipelineLayout& pipeline_layout_;
+    util::ref_ptr<Device> device_;
+    util::ref_ptr<PipelineLayout> pipeline_layout_;
     VkDescriptorSet descriptor_set_{VK_NULL_HANDLE};
 };
 

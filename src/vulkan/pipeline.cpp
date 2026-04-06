@@ -17,13 +17,13 @@ using namespace app3d::rel::vulkan;
 // --------------------------------------------------------
 // Pipeline class implementation
 
-Pipeline::Pipeline(Device& device, PipelineLayout& pipeline_layout)
-    : device_(device), pipeline_layout_(pipeline_layout) {}
+Pipeline::Pipeline(Device& device, RenderTarget& render_target, PipelineLayout& pipeline_layout)
+    : device_(util::not_null{&device}), render_target_(util::not_null{&render_target}),
+      pipeline_layout_(util::not_null{&pipeline_layout}) {}
 
-Pipeline::~Pipeline() { ObjectDestroyer<VkPipeline>::destroy(~device_, pipeline_); }
+Pipeline::~Pipeline() { ObjectDestroyer<VkPipeline>::destroy(~*device_, pipeline_); }
 
-bool Pipeline::create(RenderTarget& render_target, std::span<IShaderModule* const> shader_modules,
-                      const uxs::db::value& config) {
+bool Pipeline::create(std::span<IShaderModule* const> shader_modules, const uxs::db::value& config) {
     // Shader stages :
 
     uxs::inline_dynarray<VkPipelineShaderStageCreateInfo> shader_stage_create_infos;
@@ -176,15 +176,15 @@ bool Pipeline::create(RenderTarget& render_target, std::span<IShaderModule* cons
         .pViewportState = &viewport_state_create_info,
         .pRasterizationState = &rasterization_state_create_info,
         .pMultisampleState = &multisample_state_create_info,
-        .pDepthStencilState = render_target.useDepth() ? &depth_stencil_state_create_info : nullptr,
+        .pDepthStencilState = render_target_->useDepth() ? &depth_stencil_state_create_info : nullptr,
         .pColorBlendState = &blend_state_create_info,
         .pDynamicState = &dynamic_state_create_info,
-        .layout = ~pipeline_layout_,
-        .renderPass = render_target.getRenderPass(),
+        .layout = ~*pipeline_layout_,
+        .renderPass = render_target_->getRenderPass(),
         .basePipelineIndex = -1,
     };
 
-    VkResult result = vkCreateGraphicsPipelines(~device_, VK_NULL_HANDLE, 1, &graphics_pipeline_create_info, nullptr,
+    VkResult result = vkCreateGraphicsPipelines(~*device_, VK_NULL_HANDLE, 1, &graphics_pipeline_create_info, nullptr,
                                                 &pipeline_);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create graphics pipeline: {}", result);

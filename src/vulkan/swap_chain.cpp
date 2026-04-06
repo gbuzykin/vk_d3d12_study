@@ -16,17 +16,18 @@ using namespace app3d::rel::vulkan;
 // --------------------------------------------------------
 // SwapChain class implementation
 
-SwapChain::SwapChain(Device& device, Surface& surface) : device_(device), surface_(surface) {}
+SwapChain::SwapChain(Device& device, Surface& surface)
+    : device_(util::not_null{&device}), surface_(util::not_null{&surface}) {}
 
 SwapChain::~SwapChain() {
     for (auto& kit : submit_kits_) {
-        ObjectDestroyer<VkSemaphore>::destroy(~device_, kit.sem_image_acquired);
-        ObjectDestroyer<VkSemaphore>::destroy(~device_, kit.sem_rendering_complete);
-        ObjectDestroyer<VkSemaphore>::destroy(~device_, kit.sem_ready_to_present);
-        device_.getPresentQueue().releaseCommandBuffer(~kit.present_command_buffer);
+        ObjectDestroyer<VkSemaphore>::destroy(~*device_, kit.sem_image_acquired);
+        ObjectDestroyer<VkSemaphore>::destroy(~*device_, kit.sem_rendering_complete);
+        ObjectDestroyer<VkSemaphore>::destroy(~*device_, kit.sem_ready_to_present);
+        device_->getPresentQueue().releaseCommandBuffer(~kit.present_command_buffer);
     }
     destroyImageViews();
-    ObjectDestroyer<VkSwapchainKHR>::destroy(~device_, swap_chain_);
+    ObjectDestroyer<VkSwapchainKHR>::destroy(~*device_, swap_chain_);
 }
 
 std::uint32_t SwapChain::chooseImageCount(const VkSurfaceCapabilitiesKHR& capabilities, const uxs::db::value& opts) {
@@ -103,72 +104,22 @@ VkSurfaceFormatKHR SwapChain::chooseImageFormat(std::span<const VkSurfaceFormatK
 }
 
 bool SwapChain::create(const uxs::db::value& opts) {
-    if (!surface_.loadCapabilities(device_.getPhysicalDevice())) { return false; }
-
-    const auto& capabilities = surface_.getCapabilities();
-
-    const std::uint32_t image_count = chooseImageCount(capabilities, opts);
-    image_extent_ = chooseImageExtent(capabilities, opts);
-
-    if (image_extent_.width == 0 || image_extent_.height == 0) {
-        logError(LOG_VK "failed to choose swap chain image size");
-        return false;
-    }
-
-    const std::uint32_t layer_count = std::max<std::uint32_t>(opts.value<std::uint32_t>("layer_count"), 1);
-
-    if (render_target_) { render_target_->destroyFrameResources(); }
-    destroyImageViews();
-    images_.clear();
-
-    const VkSwapchainCreateInfoKHR create_info{
-        .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-        .surface = ~surface_,
-        .minImageCount = image_count,
-        .imageFormat = surface_.getImageFormat().format,
-        .imageColorSpace = surface_.getImageFormat().colorSpace,
-        .imageExtent = image_extent_,
-        .imageArrayLayers = layer_count,
-        .imageUsage = surface_.getImageUsage(),
-        .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
-        .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
-        .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-        .presentMode = surface_.getPresentMode(),
-        .clipped = VK_TRUE,
-        .oldSwapchain = swap_chain_,
-    };
-
-    const VkSwapchainKHR old_swap_chain = swap_chain_;
-    VkResult result = vkCreateSwapchainKHR(~device_, &create_info, nullptr, &swap_chain_);
-    if (result != VK_SUCCESS || swap_chain_ == VK_NULL_HANDLE) {
-        logError(LOG_VK "couldn't create swap chain: {}", result);
-        return false;
-    }
-
-    ObjectDestroyer<VkSwapchainKHR>::destroy(~device_, old_swap_chain);
-
-    if (submit_kits_.empty()) {
-        submit_kits_.resize(getFifCount());
-        for (auto& kit : submit_kits_) {
-            if (!device_.createSemaphore(kit.sem_image_acquired)) { return false; }
-            if (!device_.createSemaphore(kit.sem_rendering_complete)) { return false; }
-            if (device_.getPresentQueue().getFamilyIndex() != device_.getGraphicsQueue().getFamilyIndex()) {
-                if (!device_.createSemaphore(kit.sem_ready_to_present)) { return false; }
-                VkCommandBuffer command_buffer = VK_NULL_HANDLE;
-                if (!device_.getPresentQueue().obtainCommandBuffer(command_buffer)) { return false; }
-                kit.present_command_buffer = CommandBuffer::wrap(command_buffer);
-            }
+    submit_kits_.resize(getFifCount());
+    for (auto& kit : submit_kits_) {
+        if (!device_->createSemaphore(kit.sem_image_acquired)) { return false; }
+        if (!device_->createSemaphore(kit.sem_rendering_complete)) { return false; }
+        if (device_->getPresentQueue().getFamilyIndex() != device_->getGraphicsQueue().getFamilyIndex()) {
+            if (!device_->createSemaphore(kit.sem_ready_to_present)) { return false; }
+            VkCommandBuffer command_buffer = VK_NULL_HANDLE;
+            if (!device_->getPresentQueue().obtainCommandBuffer(command_buffer)) { return false; }
+            kit.present_command_buffer = CommandBuffer::wrap(command_buffer);
         }
     }
 
-    if (!loadImageHandles()) { return false; }
-    if (!createImageViews()) { return false; }
-    if (render_target_ && !render_target_->createFrameResources()) { return false; }
-
-    return true;
+    return recreateSwapChainResources(opts);
 }
 
-VkFormat SwapChain::getImageFormat() const { return surface_.getImageFormat().format; }
+VkFormat SwapChain::getImageFormat() const { return surface_->getImageFormat().format; }
 
 VkPipelineStageFlags SwapChain::getImageConsumingStages() const { return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT; }
 
@@ -179,7 +130,7 @@ VkImageLayout SwapChain::getImageLayout() const { return VK_IMAGE_LAYOUT_PRESENT
 void SwapChain::imageBarrierBefore(CommandBuffer& command_buffer, std::uint32_t image_index) {}
 
 void SwapChain::imageBarrierAfter(CommandBuffer& command_buffer, std::uint32_t image_index) {
-    if (device_.getGraphicsQueue().getFamilyIndex() != device_.getPresentQueue().getFamilyIndex()) {
+    if (device_->getGraphicsQueue().getFamilyIndex() != device_->getPresentQueue().getFamilyIndex()) {
         command_buffer.setImageMemoryBarrier(
             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
             std::array{
@@ -189,8 +140,8 @@ void SwapChain::imageBarrierAfter(CommandBuffer& command_buffer, std::uint32_t i
                     .new_access = VK_ACCESS_NONE,
                     .current_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
                     .new_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                    .current_queue_family = device_.getGraphicsQueue().getFamilyIndex(),
-                    .new_queue_family = device_.getPresentQueue().getFamilyIndex(),
+                    .current_queue_family = device_->getGraphicsQueue().getFamilyIndex(),
+                    .new_queue_family = device_->getPresentQueue().getFamilyIndex(),
                     .aspect = VK_IMAGE_ASPECT_COLOR_BIT,
                 }),
             });
@@ -200,7 +151,7 @@ void SwapChain::imageBarrierAfter(CommandBuffer& command_buffer, std::uint32_t i
 RenderTargetResult SwapChain::acquireFrameImage(std::uint32_t n_frame, std::uint64_t timeout,
                                                 std::uint32_t& image_index) {
     auto& kit = submit_kits_[n_frame];
-    VkResult result = vkAcquireNextImageKHR(~device_, swap_chain_, timeout, kit.sem_image_acquired, VK_NULL_HANDLE,
+    VkResult result = vkAcquireNextImageKHR(~*device_, swap_chain_, timeout, kit.sem_image_acquired, VK_NULL_HANDLE,
                                             &image_index);
     if (result == VK_SUCCESS) { return RenderTargetResult::SUCCESS; }
     if (result == VK_SUBOPTIMAL_KHR) { return RenderTargetResult::SUBOPTIMAL; }
@@ -212,10 +163,10 @@ RenderTargetResult SwapChain::submitFrameImage(std::uint32_t n_frame, std::uint3
                                                CommandBuffer& command_buffer, VkFence fence) {
     auto& kit = submit_kits_[n_frame];
 
-    const bool queue_family_transition = device_.getGraphicsQueue().getFamilyIndex() !=
-                                         device_.getPresentQueue().getFamilyIndex();
+    const bool queue_family_transition = device_->getGraphicsQueue().getFamilyIndex() !=
+                                         device_->getPresentQueue().getFamilyIndex();
 
-    if (!device_.getGraphicsQueue().submitCommandBuffers(
+    if (!device_->getGraphicsQueue().submitCommandBuffers(
             {std::array{kit.sem_image_acquired},
              std::array{VkPipelineStageFlags(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)}},
             std::array{~command_buffer}, std::array{kit.sem_rendering_complete},
@@ -241,15 +192,15 @@ RenderTargetResult SwapChain::submitFrameImage(std::uint32_t n_frame, std::uint3
                     .new_access = VK_ACCESS_NONE,
                     .current_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
                     .new_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                    .current_queue_family = device_.getGraphicsQueue().getFamilyIndex(),
-                    .new_queue_family = device_.getPresentQueue().getFamilyIndex(),
+                    .current_queue_family = device_->getGraphicsQueue().getFamilyIndex(),
+                    .new_queue_family = device_->getPresentQueue().getFamilyIndex(),
                     .aspect = VK_IMAGE_ASPECT_COLOR_BIT,
                 }),
             });
 
         if (!present_command_buffer.endCommandBuffer()) { return RenderTargetResult::FAILED; }
 
-        if (!device_.getPresentQueue().submitCommandBuffers(
+        if (!device_->getPresentQueue().submitCommandBuffers(
                 {std::array{kit.sem_rendering_complete},
                  std::array{VkPipelineStageFlags(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT)}},
                 std::array{~present_command_buffer}, std::array{kit.sem_ready_to_present}, fence)) {
@@ -259,29 +210,89 @@ RenderTargetResult SwapChain::submitFrameImage(std::uint32_t n_frame, std::uint3
         ready_to_present = kit.sem_ready_to_present;
     }
 
-    return device_.getPresentQueue().presentImages(std::array{ready_to_present},
-                                                   {std::array{swap_chain_}, std::array{image_index}});
+    return device_->getPresentQueue().presentImages(std::array{ready_to_present},
+                                                    {std::array{swap_chain_}, std::array{image_index}});
+}
+
+void SwapChain::removeRenderTarget(RenderTarget* render_target) {
+    if (render_target_ == render_target) { render_target_ = nullptr; }
 }
 
 //@{ ISwapChain
 
-IRenderTarget* SwapChain::createRenderTarget(const uxs::db::value& opts) {
-    render_target_ = device_.createRenderTarget(*this, opts);
-    return render_target_;
+bool SwapChain::recreateSwapChain(const uxs::db::value& opts) { return recreateSwapChainResources(opts); }
+
+util::ref_ptr<IRenderTarget> SwapChain::createRenderTarget(const uxs::db::value& opts) {
+    auto render_target = util::make_new<RenderTarget>(*device_, *this);
+    if (!render_target->create(opts)) { return nullptr; }
+    render_target_ = render_target.get();
+    return std::move(render_target);
 }
 
 //@}
 
+bool SwapChain::recreateSwapChainResources(const uxs::db::value& opts) {
+    if (!surface_->loadCapabilities(device_->getPhysicalDevice())) { return false; }
+
+    const auto& capabilities = surface_->getCapabilities();
+
+    const std::uint32_t image_count = chooseImageCount(capabilities, opts);
+    image_extent_ = chooseImageExtent(capabilities, opts);
+
+    if (image_extent_.width == 0 || image_extent_.height == 0) {
+        logError(LOG_VK "failed to choose swap chain image size");
+        return false;
+    }
+
+    const std::uint32_t layer_count = std::max<std::uint32_t>(opts.value<std::uint32_t>("layer_count"), 1);
+
+    if (render_target_) { render_target_->destroyFrameResources(); }
+    destroyImageViews();
+    images_.clear();
+
+    const VkSwapchainCreateInfoKHR create_info{
+        .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .surface = ~*surface_,
+        .minImageCount = image_count,
+        .imageFormat = surface_->getImageFormat().format,
+        .imageColorSpace = surface_->getImageFormat().colorSpace,
+        .imageExtent = image_extent_,
+        .imageArrayLayers = layer_count,
+        .imageUsage = surface_->getImageUsage(),
+        .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+        .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+        .presentMode = surface_->getPresentMode(),
+        .clipped = VK_TRUE,
+        .oldSwapchain = swap_chain_,
+    };
+
+    const VkSwapchainKHR old_swap_chain = swap_chain_;
+    VkResult result = vkCreateSwapchainKHR(~*device_, &create_info, nullptr, &swap_chain_);
+    if (result != VK_SUCCESS || swap_chain_ == VK_NULL_HANDLE) {
+        logError(LOG_VK "couldn't create swap chain: {}", result);
+        return false;
+    }
+
+    ObjectDestroyer<VkSwapchainKHR>::destroy(~*device_, old_swap_chain);
+
+    if (!loadImageHandles()) { return false; }
+    if (!createImageViews()) { return false; }
+    if (render_target_ && !render_target_->createFrameResources()) { return false; }
+
+    return true;
+}
+
 bool SwapChain::loadImageHandles() {
     std::uint32_t image_count = 0;
-    VkResult result = vkGetSwapchainImagesKHR(~device_, swap_chain_, &image_count, nullptr);
+    VkResult result = vkGetSwapchainImagesKHR(~*device_, swap_chain_, &image_count, nullptr);
     if (result != VK_SUCCESS || image_count == 0) {
         logError(LOG_VK "couldn't get the number of swap chain images: {}", result);
         return false;
     }
 
     images_.resize(image_count, VK_NULL_HANDLE);
-    result = vkGetSwapchainImagesKHR(~device_, swap_chain_, &image_count, images_.data());
+    result = vkGetSwapchainImagesKHR(~*device_, swap_chain_, &image_count, images_.data());
     if (result != VK_SUCCESS || image_count == 0) {
         logError(LOG_VK "couldn't enumerate swap_chain images: {}", result);
         return false;
@@ -298,7 +309,7 @@ bool SwapChain::createImageViews() {
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image = images_[n],
             .viewType = VK_IMAGE_VIEW_TYPE_2D,
-            .format = surface_.getImageFormat().format,
+            .format = surface_->getImageFormat().format,
             .subresourceRange =
                 {
                     .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -309,7 +320,7 @@ bool SwapChain::createImageViews() {
                 },
         };
 
-        VkResult result = vkCreateImageView(~device_, &create_info, nullptr, &image_views_[n]);
+        VkResult result = vkCreateImageView(~*device_, &create_info, nullptr, &image_views_[n]);
         if (result != VK_SUCCESS) {
             logError(LOG_VK "couldn't create image view for swap chain image: {}", result);
             return false;
@@ -320,6 +331,6 @@ bool SwapChain::createImageViews() {
 }
 
 void SwapChain::destroyImageViews() {
-    for (const auto& view : image_views_) { ObjectDestroyer<VkImageView>::destroy(~device_, view); }
+    for (const auto& view : image_views_) { ObjectDestroyer<VkImageView>::destroy(~*device_, view); }
     image_views_.clear();
 }

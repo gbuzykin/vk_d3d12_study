@@ -10,32 +10,18 @@ namespace app3d::rel::vulkan {
 
 class RenderingDriver;
 class PhysicalDevice;
-class RenderTarget;
-class FrameImageProvider;
-class ShaderModule;
-class PipelineLayout;
-class Pipeline;
-class Buffer;
-class Texture;
-class Sampler;
-class DescriptorSet;
 
-class Device final : public IDevice {
+class Device final : public util::ref_counter, public IDevice {
  public:
     Device(RenderingDriver& instance, PhysicalDevice& physical_device);
     ~Device() override;
-    Device(const Device&) = delete;
-    Device& operator=(const Device&) = delete;
 
     bool create(const uxs::db::value& caps);
-    void finalize();
-    bool waitDevice();
     bool createSemaphore(VkSemaphore& semaphore);
     bool createFence(bool signaled, VkFence& fence);
     bool waitForFences(std::span<const VkFence> fences, VkBool32 wait_for_all, std::uint64_t timeout);
     bool resetFences(std::span<const VkFence> fences);
 
-    RenderTarget* createRenderTarget(FrameImageProvider& image_provider, const uxs::db::value& opts);
     bool obtainDescriptorSet(VkDescriptorSetLayout, VkDescriptorSet& descriptor_set);
     void releaseDescriptorSet(VkDescriptorSet descriptor_set);
     void updateDescriptorSets(std::span<const VkWriteDescriptorSet> write_descriptors,
@@ -62,18 +48,21 @@ class Device final : public IDevice {
     DevQueue& getComputeQueue() { return compute_queue_; }
 
     //@{ IDevice
-    IShaderModule* createShaderModule(std::span<const std::uint32_t> source) override;
-    IPipelineLayout* createPipelineLayout(const uxs::db::value& config) override;
-    IPipeline* createPipeline(IRenderTarget& render_target, IPipelineLayout& pipeline_layout,
-                              std::span<IShaderModule* const> shader_modules, const uxs::db::value& config) override;
-    IBuffer* createBuffer(std::size_t size, BufferType type) override;
-    ITexture* createTexture(Extent3u extent) override;
-    ISampler* createSampler() override;
-    IDescriptorSet* createDescriptorSet(IPipelineLayout& pipeline_layout) override;
+    util::ref_counter& getRefCounter() override { return *this; }
+    bool waitDevice() override;
+    util::ref_ptr<IShaderModule> createShaderModule(std::span<const std::uint32_t> source) override;
+    util::ref_ptr<IPipelineLayout> createPipelineLayout(const uxs::db::value& config) override;
+    util::ref_ptr<IPipeline> createPipeline(IRenderTarget& render_target, IPipelineLayout& pipeline_layout,
+                                            std::span<IShaderModule* const> shader_modules,
+                                            const uxs::db::value& config) override;
+    util::ref_ptr<IBuffer> createBuffer(std::size_t size, BufferType type) override;
+    util::ref_ptr<ITexture> createTexture(Extent3u extent) override;
+    util::ref_ptr<ISampler> createSampler() override;
+    util::ref_ptr<IDescriptorSet> createDescriptorSet(IPipelineLayout& pipeline_layout) override;
     //@}
 
  private:
-    RenderingDriver& instance_;
+    util::ref_ptr<RenderingDriver> instance_;
     PhysicalDevice& physical_device_;
     VkDevice device_{VK_NULL_HANDLE};
     DevQueue graphics_queue_;
@@ -84,19 +73,15 @@ class Device final : public IDevice {
     VmaAllocator allocator_{VK_NULL_HANDLE};
     VkDescriptorPool descriptor_pool_{VK_NULL_HANDLE};
 
-    std::vector<std::unique_ptr<RenderTarget>> render_targets_;
-    std::vector<std::unique_ptr<ShaderModule>> shader_modules_;
-    std::vector<std::unique_ptr<PipelineLayout>> pipeline_layouts_;
-    std::vector<std::unique_ptr<Pipeline>> pipelines_;
-    std::vector<std::unique_ptr<Buffer>> buffers_;
-    std::vector<std::unique_ptr<Texture>> textures_;
-    std::vector<std::unique_ptr<Sampler>> samplers_;
-    std::vector<std::unique_ptr<DescriptorSet>> descriptor_sets_;
+    struct StagingBuffer {
+        VkBuffer handle{VK_NULL_HANDLE};
+        VmaAllocation allocation{VK_NULL_HANDLE};
+        std::uint32_t size = 0;
+    };
 
     struct TransferKit {
-        explicit TransferKit(Device& device) : staging_buffer(device) {}
-        VkFence fence;
-        Buffer staging_buffer;
+        VkFence fence{VK_NULL_HANDLE};
+        StagingBuffer staging_buffer;
         CommandBuffer command_buffer;
     };
 
@@ -105,7 +90,9 @@ class Device final : public IDevice {
     std::uint32_t current_transfer_kit_ = 0;
     uxs::inline_dynarray<TransferKit, TRANSFER_KIT_COUNT> transfer_kits_;
 
-    bool createDescriptorPool(std::uint32_t max_sets_count, std::span<const VkDescriptorPoolSize> descriptor_types,
+    bool createStagingBuffer(VkDeviceSize size, StagingBuffer& buffer);
+
+    bool createDescriptorPool(std::uint32_t max_sets, std::span<const VkDescriptorPoolSize> descriptor_types,
                               VkDescriptorPool& descriptor_pool);
 };
 

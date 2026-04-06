@@ -11,9 +11,9 @@ using namespace app3d::rel::vulkan;
 // --------------------------------------------------------
 // ShaderModule class implementation
 
-ShaderModule::ShaderModule(Device& device) : device_(device) {}
+ShaderModule::ShaderModule(Device& device) : device_(util::not_null{&device}) {}
 
-ShaderModule::~ShaderModule() { ObjectDestroyer<VkShaderModule>::destroy(~device_, shader_module_); }
+ShaderModule::~ShaderModule() { ObjectDestroyer<VkShaderModule>::destroy(~*device_, shader_module_); }
 
 bool ShaderModule::create(std::span<const std::uint32_t> source) {
     const VkShaderModuleCreateInfo create_info{
@@ -22,7 +22,7 @@ bool ShaderModule::create(std::span<const std::uint32_t> source) {
         .pCode = source.data(),
     };
 
-    VkResult result = vkCreateShaderModule(~device_, &create_info, nullptr, &shader_module_);
+    VkResult result = vkCreateShaderModule(~*device_, &create_info, nullptr, &shader_module_);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create shader module: {}", result);
         return false;

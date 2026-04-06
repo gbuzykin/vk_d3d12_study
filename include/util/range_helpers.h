@@ -39,8 +39,7 @@ class multispan {
     std::tuple<Ts*...> ptrs_{};
 };
 
-template<typename Range>
-    requires(std::ranges::contiguous_range<Range>)
+template<std::ranges::contiguous_range Range>
 inline auto as_byte_span(Range&& r) {
     using Ty = std::remove_reference_t<decltype(*std::data(r))>;
     static_assert(std::is_trivial_v<Ty>);

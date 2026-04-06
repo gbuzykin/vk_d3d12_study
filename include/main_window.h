@@ -2,6 +2,7 @@
 
 #include "interfaces/i_rendering_driver.h"
 
+#include <memory>
 #include <string>
 
 namespace app3d {

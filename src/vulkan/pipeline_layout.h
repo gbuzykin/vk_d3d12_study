@@ -12,12 +12,10 @@ namespace app3d::rel::vulkan {
 
 class Device;
 
-class PipelineLayout : public IPipelineLayout {
+class PipelineLayout : public util::ref_counter, public IPipelineLayout {
  public:
     explicit PipelineLayout(Device& device);
     ~PipelineLayout();
-    PipelineLayout(const PipelineLayout&) = delete;
-    PipelineLayout& operator=(const PipelineLayout&) = delete;
 
     enum class BindingType {
         TEXTURE_SAMPLER = 0,
@@ -34,8 +32,12 @@ class PipelineLayout : public IPipelineLayout {
         return descriptor_set_layouts_[layout_index];
     }
 
+    //@{ IPipelineLayout
+    util::ref_counter& getRefCounter() override { return *this; }
+    //@}
+
  private:
-    Device& device_;
+    util::ref_ptr<Device> device_;
     uxs::inline_dynarray<VkDescriptorSetLayout> descriptor_set_layouts_;
     VkPipelineLayout pipeline_layout_{VK_NULL_HANDLE};
 

@@ -15,17 +15,17 @@ using namespace app3d::rel::vulkan;
 // --------------------------------------------------------
 // Texture class implementation
 
-Texture::Texture(Device& device) : device_(device) {}
+Texture::Texture(Device& device) : device_(util::not_null{&device}) {}
 
 Texture::~Texture() {
-    ObjectDestroyer<VkImageView>::destroy(~device_, image_view_);
-    vmaDestroyImage(device_.getAllocator(), image_, allocation_);
+    ObjectDestroyer<VkImageView>::destroy(~*device_, image_view_);
+    vmaDestroyImage(device_->getAllocator(), image_, allocation_);
 }
 
 bool Texture::create(VkImageType type, VkFormat format, VkExtent3D extent, std::uint32_t num_mipmaps,
                      std::uint32_t num_layers, VkImageUsageFlags usage, bool cubemap, VkImageViewType view_type) {
     VkFormatProperties format_properties;
-    vkGetPhysicalDeviceFormatProperties(~device_.getPhysicalDevice(), format, &format_properties);
+    vkGetPhysicalDeviceFormatProperties(~device_->getPhysicalDevice(), format, &format_properties);
 
     if (!(format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT)) {
         logError(LOG_VK "provided format is not supported for a sampled image");
@@ -54,7 +54,7 @@ bool Texture::create(VkImageType type, VkFormat format, VkExtent3D extent, std::
 
     const VmaAllocationCreateInfo alloc_info{.usage = VMA_MEMORY_USAGE_AUTO};
 
-    VkResult result = vmaCreateImage(device_.getAllocator(), &create_info, &alloc_info, &image_, &allocation_, nullptr);
+    VkResult result = vmaCreateImage(device_->getAllocator(), &create_info, &alloc_info, &image_, &allocation_, nullptr);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create image: {}", result);
         return false;
@@ -75,7 +75,7 @@ bool Texture::create(VkImageType type, VkFormat format, VkExtent3D extent, std::
             },
     };
 
-    result = vkCreateImageView(~device_, &view_create_info, nullptr, &image_view_);
+    result = vkCreateImageView(~*device_, &view_create_info, nullptr, &image_view_);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create image view: {}", result);
         return false;
@@ -103,7 +103,7 @@ RenderTargetResult Texture::acquireFrameImage(std::uint32_t n_frame, std::uint64
 
 RenderTargetResult Texture::submitFrameImage(std::uint32_t n_frame, std::uint32_t image_index,
                                              CommandBuffer& command_buffer, VkFence fence) {
-    if (!device_.getGraphicsQueue().submitCommandBuffers({}, std::array{~command_buffer}, {}, fence)) {
+    if (!device_->getGraphicsQueue().submitCommandBuffers({}, std::array{~command_buffer}, {}, fence)) {
         return RenderTargetResult::FAILED;
     }
     return RenderTargetResult::SUCCESS;
@@ -112,22 +112,24 @@ RenderTargetResult Texture::submitFrameImage(std::uint32_t n_frame, std::uint32_
 //@{ ITexture
 
 bool Texture::updateTexture(std::span<const std::uint8_t> data, Vec3i offset, Extent3u extent) {
-    return device_.updateImage(data.data(), VkDeviceSize(data.size()), image_,
-                               {
-                                   .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                                   .mipLevel = 0,
-                                   .baseArrayLayer = 0,
-                                   .layerCount = 1,
-                               },
-                               {.x = offset.x, .y = offset.y, .z = offset.z},
-                               {.width = extent.width, .height = extent.height, .depth = extent.depth},
-                               VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_NONE,
-                               VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
-                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, {});
+    return device_->updateImage(data.data(), VkDeviceSize(data.size()), image_,
+                                {
+                                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                                    .mipLevel = 0,
+                                    .baseArrayLayer = 0,
+                                    .layerCount = 1,
+                                },
+                                {.x = offset.x, .y = offset.y, .z = offset.z},
+                                {.width = extent.width, .height = extent.height, .depth = extent.depth},
+                                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                VK_ACCESS_NONE, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
+                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, {});
 }
 
-IRenderTarget* Texture::createRenderTarget(const uxs::db::value& opts) {
-    return device_.createRenderTarget(*this, opts);
+util::ref_ptr<IRenderTarget> Texture::createRenderTarget(const uxs::db::value& opts) {
+    auto render_target = util::make_new<RenderTarget>(*device_, *this);
+    if (!render_target->create(opts)) { return nullptr; }
+    return std::move(render_target);
 }
 
 //@}
