@@ -1,6 +1,7 @@
 #pragma once
 
 #include "command_buffer.h"
+#include "image_provider.h"
 
 #include <uxs/dynarray.h>
 
@@ -9,8 +10,9 @@ namespace app3d::rel::vulkan {
 class Device;
 class Surface;
 class RenderTarget;
+class CommandBuffer;
 
-class SwapChain final : public ISwapChain {
+class SwapChain final : public ImageProvider, public ISwapChain {
  public:
     SwapChain(Device& device, Surface& surface);
     ~SwapChain() override;
@@ -24,23 +26,27 @@ class SwapChain final : public ISwapChain {
     static VkSurfaceFormatKHR chooseImageFormat(std::span<const VkSurfaceFormatKHR> formats);
 
     bool create(const uxs::db::value& opts);
-    VkImage getImage(std::uint32_t image_index) { return images_[image_index]; }
-    VkImageView getImageView(std::uint32_t image_index) { return image_views_[image_index]; }
-    std::uint32_t getImageCount() const { return std::uint32_t(images_.size()); }
-    std::uint32_t getFifCount() const { return 3; }
-    void imageBarrierBefore(CommandBuffer& command_buffer, std::uint32_t image_index);
-    bool imageBarrierAfter(CommandBuffer& command_buffer, std::uint32_t image_index);
-    RenderTargetResult acquireImage(std::uint64_t timeout, VkSemaphore semaphore, std::uint32_t& image_index);
-    RenderTargetResult presentImage(std::uint32_t n_frame, std::uint32_t image_index, VkSemaphore wait_semaphore,
-                                    VkFence fence);
 
     VkSwapchainKHR operator~() { return swap_chain_; }
-    Surface& getSurface() { return surface_; }
+
+    //@{ ImageProvider
+    VkImage getImage(std::uint32_t image_index) override { return images_[image_index]; }
+    VkImageView getImageView(std::uint32_t image_index) override { return image_views_[image_index]; }
+    std::uint32_t getImageCount() const override { return std::uint32_t(images_.size()); }
+    std::uint32_t getFifCount() const override { return 3; }
+    VkExtent2D getImageExtent() const override { return image_extent_; }
+    VkFormat getImageFormat() const override;
+    VkPipelineStageFlags getImageConsumingStages() const override;
+    VkAccessFlags getImageAccess() const override;
+    VkImageLayout getImageLayout() const override;
+    void imageBarrierBefore(CommandBuffer& command_buffer, std::uint32_t image_index) override;
+    bool imageBarrierAfter(CommandBuffer& command_buffer, std::uint32_t image_index) override;
+    RenderTargetResult acquireImage(std::uint64_t timeout, VkSemaphore semaphore, std::uint32_t& image_index) override;
+    RenderTargetResult presentImage(std::uint32_t n_frame, std::uint32_t image_index, VkSemaphore wait_semaphore,
+                                    VkFence fence) override;
+    //@}
 
     //@{ ISwapChain
-    Extent2u getImageExtent() const override {
-        return Extent2u{.width = image_extent_.width, .height = image_extent_.height};
-    }
     IRenderTarget* createRenderTarget(const uxs::db::value& opts) override;
     //@}
 
@@ -48,10 +54,10 @@ class SwapChain final : public ISwapChain {
     Device& device_;
     Surface& surface_;
     VkSwapchainKHR swap_chain_{VK_NULL_HANDLE};
-    VkExtent2D image_extent_{0, 0};
+    VkExtent2D image_extent_{};
     uxs::inline_dynarray<VkImage, 3> images_;
     uxs::inline_dynarray<VkImageView, 3> image_views_;
-    std::unique_ptr<RenderTarget> render_target_;
+    RenderTarget* render_target_ = nullptr;
 
     struct PresentKit {
         VkSemaphore sem_ready_to_present{VK_NULL_HANDLE};

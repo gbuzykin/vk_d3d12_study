@@ -10,6 +10,8 @@ namespace app3d::rel::vulkan {
 
 class RenderingDriver;
 class PhysicalDevice;
+class RenderTarget;
+class ImageProvider;
 class ShaderModule;
 class PipelineLayout;
 class Pipeline;
@@ -33,6 +35,7 @@ class Device final : public IDevice {
     bool waitForFences(std::span<const VkFence> fences, VkBool32 wait_for_all, std::uint64_t timeout);
     bool resetFences(std::span<const VkFence> fences);
 
+    RenderTarget* createRenderTarget(ImageProvider& image_provider, const uxs::db::value& opts);
     bool obtainDescriptorSet(VkDescriptorSetLayout, VkDescriptorSet& descriptor_set);
     void releaseDescriptorSet(VkDescriptorSet descriptor_set);
     void updateDescriptorSets(std::span<const VkWriteDescriptorSet> write_descriptors,
@@ -41,15 +44,15 @@ class Device final : public IDevice {
                                std::uint32_t(copy_descriptors.size()), copy_descriptors.data());
     }
 
-    bool updateBuffer(const void* data, VkDeviceSize data_size, VkBuffer dst, VkDeviceSize dst_offset,
-                      VkAccessFlags dst_current_access, VkAccessFlags dst_new_access,
-                      VkPipelineStageFlags dst_generating_stages, VkPipelineStageFlags dst_consuming_stages,
+    bool updateBuffer(const void* data, VkDeviceSize data_size, VkBuffer dst, VkDeviceSize offset,
+                      VkPipelineStageFlags generating_stages, VkPipelineStageFlags consuming_stages,
+                      VkAccessFlags current_access, VkAccessFlags new_access,
                       std::span<const VkSemaphore> signal_semaphores);
-    bool updateImage(const void* data, VkDeviceSize data_size, VkImage dst, VkImageSubresourceLayers dst_subresource,
-                     VkOffset3D dst_offset, VkExtent3D dst_extent, VkImageLayout dst_current_layout,
-                     VkImageLayout dst_new_layout, VkAccessFlags dst_current_access, VkAccessFlags dst_new_access,
-                     VkImageAspectFlags dst_aspect, VkPipelineStageFlags dst_generating_stages,
-                     VkPipelineStageFlags dst_consuming_stages, std::span<const VkSemaphore> signal_semaphores);
+    bool updateImage(const void* data, VkDeviceSize data_size, VkImage dst, VkImageSubresourceLayers subresource,
+                     VkOffset3D offset, VkExtent3D extent, VkPipelineStageFlags generating_stages,
+                     VkPipelineStageFlags consuming_stages, VkAccessFlags current_access, VkAccessFlags new_access,
+                     VkImageLayout current_layout, VkImageLayout new_layout, VkImageAspectFlags aspect,
+                     std::span<const VkSemaphore> signal_semaphores);
 
     VkDevice operator~() { return device_; }
     PhysicalDevice& getPhysicalDevice() { return physical_device_; }
@@ -81,6 +84,7 @@ class Device final : public IDevice {
     VmaAllocator vma_allocator_{VK_NULL_HANDLE};
     VkDescriptorPool descriptor_pool_{VK_NULL_HANDLE};
 
+    std::vector<std::unique_ptr<RenderTarget>> render_targets_;
     std::vector<std::unique_ptr<ShaderModule>> shader_modules_;
     std::vector<std::unique_ptr<PipelineLayout>> pipeline_layouts_;
     std::vector<std::unique_ptr<Pipeline>> pipelines_;

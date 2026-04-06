@@ -98,9 +98,11 @@ struct IBuffer {
     virtual bool updateConstantBuffer(std::span<const std::uint8_t> data, std::size_t offset) = 0;
 };
 
+struct IRenderTarget;
 struct ITexture {
     virtual ~ITexture() = default;
     virtual bool updateTexture(std::span<const std::uint8_t> data, Vec3i offset, Extent3u extent) = 0;
+    virtual IRenderTarget* createRenderTarget(const uxs::db::value& opts) = 0;
 };
 
 struct ISampler {
@@ -115,6 +117,7 @@ struct IDescriptorSet {
 
 struct IRenderTarget {
     virtual ~IRenderTarget() = default;
+    virtual Extent2u getImageExtent() const = 0;
     virtual std::uint32_t getFifCount() const = 0;
     virtual RenderTargetResult beginRenderTarget(const Color4f& clear_color, float depth, std::uint32_t stencil) = 0;
     virtual bool endRenderTarget() = 0;
@@ -142,7 +145,6 @@ struct IDevice {
 
 struct ISwapChain {
     virtual ~ISwapChain() = default;
-    virtual Extent2u getImageExtent() const = 0;
     virtual IRenderTarget* createRenderTarget(const uxs::db::value& opts) = 0;
 };
 
