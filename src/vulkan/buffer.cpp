@@ -59,14 +59,14 @@ bool Buffer::create(BufferType type, VkDeviceSize size, bool host_access) {
 bool Buffer::updateBuffer(std::span<const std::uint8_t> data, std::uint64_t offset) {
     switch (type_) {
         case BufferType::VERTEX: {
-            return device_.updateBuffer(data.data(), VkDeviceSize(data.size()), buffer_, VkDeviceSize(offset),
-                                        VK_ACCESS_NONE, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
-                                        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, {});
+            return device_.updateBuffer(data, buffer_, VkDeviceSize(offset), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                        VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_NONE,
+                                        VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT, {});
         } break;
         case BufferType::CONSTANT: {
-            return device_.updateBuffer(data.data(), VkDeviceSize(data.size()), buffer_, VkDeviceSize(offset),
-                                        VK_ACCESS_NONE, VK_ACCESS_UNIFORM_READ_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
-                                        VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, {});
+            return device_.updateBuffer(data, buffer_, VkDeviceSize(offset), VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
+                                        VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_ACCESS_NONE, VK_ACCESS_UNIFORM_READ_BIT,
+                                        {});
         } break;
         default: return false;
     }

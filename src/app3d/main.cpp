@@ -136,7 +136,7 @@ class App3DMainWindow final : public MainWindow {
     bool recreateSwapChain() {
         if (!swap_chain_->recreate(swap_chain_opts_)) { return false; }
         frame_counter_ = 0;
-        viewport_extent_ = swap_chain_->getImageExtent();
+        viewport_extent_ = render_target_->getImageExtent();
         return true;
     }
 
@@ -181,7 +181,7 @@ int App3DMainWindow::init(int argc, char** argv) {
     if (!(swap_chain_ = device_->createSwapChain(*surface_, swap_chain_opts_))) { return -1; }
 
     if (!(render_target_ = swap_chain_->createRenderTarget(JSON({"use_depth" : true})))) { return -1; }
-    viewport_extent_ = swap_chain_->getImageExtent();
+    viewport_extent_ = render_target_->getImageExtent();
 
     if (!initScene()) { return -1; }
 
