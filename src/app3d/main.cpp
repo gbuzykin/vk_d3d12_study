@@ -190,13 +190,21 @@ bool App3DMainWindow::initScene() {
     Image image;
     if (!loadImageFromFile("data/images/sunset.jpg", image, 4)) { return false; }
 
-    rel::Extent3u image_extent{.width = image.width, .height = image.height, .depth = 1};
+    const rel::TextureOpts texture_opts{
+        .extent = {.width = image.width, .height = image.height, .depth = 1},
+    };
 
-    if (!(texture_ = device_->createTexture(image_extent))) { return false; }
+    if (!(texture_ = device_->createTexture(texture_opts))) { return false; }
 
-    if (!texture_->updateTexture(image.data, {}, image_extent)) { return false; }
+    if (!texture_->updateTexture(image.data, {}, texture_opts.extent)) { return false; }
 
-    if (!(sampler_ = device_->createSampler())) { return false; }
+    if (!(sampler_ = device_->createSampler(rel::SamplerOpts{
+              .filter = rel::SamplerFilter::MIN_MAG_LINEAR_MIP_POINT,
+              .address_mode_u = rel::SamplerAddressMode::REPEAT,
+              .address_mode_v = rel::SamplerAddressMode::REPEAT,
+          }))) {
+        return false;
+    }
 
     if (!(descriptor_set_ = device_->createDescriptorSet(*pipeline_layout_))) { return false; }
     descriptor_set_->updateTextureSamplerDescriptor(*texture_, *sampler_, 0);

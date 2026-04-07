@@ -473,24 +473,21 @@ util::ref_ptr<IBuffer> Device::createBuffer(std::size_t size, BufferType type) {
     return std::move(buffer);
 }
 
-util::ref_ptr<ITexture> Device::createTexture(Extent3u extent) {
+util::ref_ptr<ITexture> Device::createTexture(const TextureOpts& opts) {
     util::ref_ptr texture = ::new Texture(*this);
+    const VkImageUsageFlags usage = opts.render_target_usage ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT :
+                                                               VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     if (!texture->create(VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_UNORM,
-                         {.width = extent.width, .height = extent.height, .depth = extent.depth}, 1, 1,
-                         VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, false, VK_IMAGE_VIEW_TYPE_2D)) {
+                         {.width = opts.extent.width, .height = opts.extent.height, .depth = 1}, 1, 1,
+                         VK_IMAGE_USAGE_SAMPLED_BIT | usage, false, VK_IMAGE_VIEW_TYPE_2D)) {
         return nullptr;
     }
     return std::move(texture);
 }
 
-util::ref_ptr<ISampler> Device::createSampler() {
+util::ref_ptr<ISampler> Device::createSampler(const SamplerOpts& opts) {
     util::ref_ptr sampler = ::new Sampler(*this);
-    if (!sampler->create(VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST,
-                         VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-                         VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, 0.0f, false, 1.0f, false, VK_COMPARE_OP_ALWAYS, 0.0f,
-                         1.0f, VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK, false)) {
-        return nullptr;
-    }
+    if (!sampler->create(opts)) { return nullptr; }
     return std::move(sampler);
 }
 
