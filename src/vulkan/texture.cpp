@@ -22,10 +22,19 @@ Texture::~Texture() {
     vmaDestroyImage(device_->getAllocator(), image_, allocation_);
 }
 
-bool Texture::create(VkImageType type, VkFormat format, VkExtent3D extent, std::uint32_t num_mipmaps,
-                     std::uint32_t num_layers, VkImageUsageFlags usage, bool cubemap, VkImageViewType view_type) {
+bool Texture::create(const TextureOpts& opts) {
+    const std::uint32_t num_mipmaps = 1;
+    const std::uint32_t num_layers = 1;
+    const bool cubemap = false;
+    const VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT |
+                                    (opts.render_target_usage ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT :
+                                                                VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+
+    image_format_ = VK_FORMAT_R8G8B8A8_UNORM;
+    image_extent_ = {.width = opts.extent.width, .height = opts.extent.height, .depth = 1};
+
     VkFormatProperties format_properties;
-    vkGetPhysicalDeviceFormatProperties(~device_->getPhysicalDevice(), format, &format_properties);
+    vkGetPhysicalDeviceFormatProperties(~device_->getPhysicalDevice(), image_format_, &format_properties);
 
     if (!(format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT)) {
         logError(LOG_VK "provided format is not supported for a sampled image");
@@ -40,9 +49,9 @@ bool Texture::create(VkImageType type, VkFormat format, VkExtent3D extent, std::
     const VkImageCreateInfo create_info{
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .flags = cubemap ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0U,
-        .imageType = type,
-        .format = format,
-        .extent = extent,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = image_format_,
+        .extent = image_extent_,
         .mipLevels = num_mipmaps,
         .arrayLayers = cubemap ? 6 * num_layers : num_layers,
         .samples = VK_SAMPLE_COUNT_1_BIT,
@@ -63,8 +72,8 @@ bool Texture::create(VkImageType type, VkFormat format, VkExtent3D extent, std::
     const VkImageViewCreateInfo view_create_info{
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .image = image_,
-        .viewType = view_type,
-        .format = format,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = image_format_,
         .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -81,8 +90,6 @@ bool Texture::create(VkImageType type, VkFormat format, VkExtent3D extent, std::
         return false;
     }
 
-    image_format_ = format;
-    image_extent_ = extent;
     return true;
 }
 

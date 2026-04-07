@@ -27,7 +27,7 @@ void DescriptorSet::updateTextureSamplerDescriptor(ITexture& texture, ISampler& 
     const std::array image_infos{
         VkDescriptorImageInfo{
             .sampler = ~static_cast<Sampler&>(sampler),
-            .imageView = static_cast<Texture&>(texture).getImageView(),
+            .imageView = static_cast<Texture&>(texture).getImageView(0),
             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         },
     };

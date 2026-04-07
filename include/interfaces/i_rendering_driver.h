@@ -42,6 +42,38 @@ enum class RenderTargetResult {
     FAILED,
 };
 
+enum class PrimitiveTopology {
+    POINTS = 0,
+    LINES,
+    LINE_STRIP,
+    TRIANGLES,
+    TRIANGLE_STRIP,
+};
+
+enum class BufferType {
+    VERTEX = 0,
+    CONSTANT,
+};
+
+enum class SamplerFilter {
+    MIN_MAG_MIP_POINT = 0,
+    MIN_MAG_POINT_MIP_LINEAR,
+    MIN_POINT_MAG_LINEAR_MIP_POINT,
+    MIN_POINT_MAG_MIP_LINEAR,
+    MIN_LINEAR_MAG_MIP_POINT,
+    MIN_LINEAR_MAG_POINT_MIP_LINEAR,
+    MIN_MAG_LINEAR_MIP_POINT,
+    MIN_MAG_MIP_LINEAR,
+    ANISOTROPIC,
+};
+
+enum class SamplerAddressMode {
+    REPEAT = 0,
+    MIRRORED_REPEAT,
+    CLAMP_TO_EDGE,
+    MIRROR_CLAMP_TO_EDGE,
+};
+
 struct Vec2i {
     std::int32_t x, y;
 };
@@ -67,17 +99,20 @@ struct Rect {
     Extent2u extent;
 };
 
-enum class PrimitiveTopology {
-    POINTS = 0,
-    LINES,
-    LINE_STRIP,
-    TRIANGLES,
-    TRIANGLE_STRIP,
+struct SamplerOpts {
+    SamplerFilter filter;
+    SamplerAddressMode address_mode_u;
+    SamplerAddressMode address_mode_v;
+    SamplerAddressMode address_mode_w;
+    float min_lod;
+    float max_lod;
+    float mip_lod_bias;
+    float max_anisotropy;
 };
 
-enum class BufferType {
-    VERTEX = 0,
-    CONSTANT,
+struct TextureOpts {
+    Extent3u extent;
+    bool render_target_usage;
 };
 
 struct IShaderModule {
@@ -149,8 +184,8 @@ struct IDevice {
                                                     std::span<IShaderModule* const> shader_modules,
                                                     const uxs::db::value& config) = 0;
     virtual util::ref_ptr<IBuffer> createBuffer(std::size_t size, BufferType type) = 0;
-    virtual util::ref_ptr<ITexture> createTexture(Extent3u extent) = 0;
-    virtual util::ref_ptr<ISampler> createSampler() = 0;
+    virtual util::ref_ptr<ITexture> createTexture(const TextureOpts& opts) = 0;
+    virtual util::ref_ptr<ISampler> createSampler(const SamplerOpts& opts) = 0;
     virtual util::ref_ptr<IDescriptorSet> createDescriptorSet(IPipelineLayout& pipeline_layout) = 0;
 };
 

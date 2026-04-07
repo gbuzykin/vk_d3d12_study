@@ -56,8 +56,8 @@ class Device final : public util::ref_counter, public IDevice {
                                             std::span<IShaderModule* const> shader_modules,
                                             const uxs::db::value& config) override;
     util::ref_ptr<IBuffer> createBuffer(std::size_t size, BufferType type) override;
-    util::ref_ptr<ITexture> createTexture(Extent3u extent) override;
-    util::ref_ptr<ISampler> createSampler() override;
+    util::ref_ptr<ITexture> createTexture(const TextureOpts& opts) override;
+    util::ref_ptr<ISampler> createSampler(const SamplerOpts& opts) override;
     util::ref_ptr<IDescriptorSet> createDescriptorSet(IPipelineLayout& pipeline_layout) override;
     //@}
 

@@ -11,11 +11,9 @@ class Texture final : public FrameImageProvider, public ITexture {
     explicit Texture(Device& device);
     ~Texture() override;
 
-    bool create(VkImageType type, VkFormat format, VkExtent3D extent, std::uint32_t num_mipmaps,
-                std::uint32_t num_layers, VkImageUsageFlags usage, bool cubemap, VkImageViewType view_type);
+    bool create(const TextureOpts& opts);
 
     VkImage operator~() { return image_; }
-    VkImageView getImageView() { return image_view_; }
 
     //@{ FrameImageProvider
     VkImageView getImageView(std::uint32_t image_index) override { return image_view_; }
