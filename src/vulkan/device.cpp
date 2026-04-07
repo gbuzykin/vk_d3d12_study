@@ -9,6 +9,7 @@
 #include "shader_module.h"
 #include "surface.h"
 #include "swap_chain.h"
+#include "tables.h"
 #include "texture.h"
 #include "vulkan_logger.h"
 #include "wrappers.h"
@@ -357,21 +358,40 @@ bool Device::updateBuffer(std::span<const std::uint8_t> data, VkBuffer dst, VkDe
     return true;
 }
 
-bool Device::updateImage(std::span<const std::uint8_t> data, VkImage dst, VkImageSubresourceLayers subresource,
-                         VkOffset3D offset, VkExtent3D extent, VkPipelineStageFlags generating_stages,
-                         VkPipelineStageFlags consuming_stages, VkAccessFlags current_access, VkAccessFlags new_access,
-                         VkImageLayout current_layout, VkImageLayout new_layout, VkImageAspectFlags aspect,
+bool Device::updateImage(const std::uint8_t* data, VkImage dst, VkFormat format, std::uint32_t first_subresource,
+                         std::span<const UpdateTextureDesc> update_subresource_descs,
+                         VkPipelineStageFlags generating_stages, VkPipelineStageFlags consuming_stages,
+                         VkAccessFlags current_access, VkAccessFlags new_access, VkImageLayout current_layout,
+                         VkImageLayout new_layout, VkImageAspectFlags aspect,
                          std::span<const VkSemaphore> signal_semaphores) {
     auto& kit = transfer_kits_[current_transfer_kit_];
 
     if (!waitForFences(std::array{kit.fence}, VK_FALSE, FINISH_TRANSFER_TIMEOUT)) { return false; }
 
-    if (kit.staging_buffer.size < data.size()) {
-        if (!createStagingBuffer(VkDeviceSize(data.size()), kit.staging_buffer)) { return false; }
+    const std::uint32_t bytes_per_pixel = getFormatSizeAlignment(format).first;
+
+    auto size_of_subresource = [bytes_per_pixel](const auto& desc) {
+        return (desc.buffer_row_size ?
+                    std::size_t(desc.buffer_row_size) * desc.buffer_row_count :
+                    std::size_t(desc.image_extent.width * bytes_per_pixel) * desc.image_extent.height) *
+               desc.image_extent.depth;
+    };
+
+    std::size_t buf_offset = 0;
+    std::size_t total_buf_size = 0;
+
+    for (const auto& desc : update_subresource_descs) {
+        const std::size_t buf_size = size_of_subresource(desc);
+        total_buf_size = std::max((desc.buffer_offset ? desc.buffer_offset : buf_offset) + buf_size, total_buf_size);
+        buf_offset += buf_size;
     }
 
-    VkResult result = vmaCopyMemoryToAllocation(allocator_, data.data(), kit.staging_buffer.allocation, 0,
-                                                VkDeviceSize(data.size()));
+    if (kit.staging_buffer.size < total_buf_size) {
+        if (!createStagingBuffer(VkDeviceSize(total_buf_size), kit.staging_buffer)) { return false; }
+    }
+
+    VkResult result = vmaCopyMemoryToAllocation(allocator_, data, kit.staging_buffer.allocation, 0,
+                                                VkDeviceSize(total_buf_size));
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't copy to host visible memory: {}", result);
         return false;
@@ -393,14 +413,31 @@ bool Device::updateImage(std::span<const std::uint8_t> data, VkImage dst, VkImag
                                                  }),
                                              });
 
-    kit.command_buffer.copyBufferToImage(kit.staging_buffer.handle, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                         std::array{
-                                             VkBufferImageCopy{
-                                                 .imageSubresource = subresource,
-                                                 .imageOffset = offset,
-                                                 .imageExtent = extent,
-                                             },
-                                         });
+    buf_offset = 0;
+    for (std::uint32_t n = 0; n < std::uint32_t(update_subresource_descs.size()); ++n) {
+        const auto& desc = update_subresource_descs[n];
+        kit.command_buffer.copyBufferToImage(
+            kit.staging_buffer.handle, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            std::array{
+                VkBufferImageCopy{
+                    .bufferOffset = desc.buffer_offset ? desc.buffer_offset : buf_offset,
+                    .bufferRowLength = desc.buffer_row_size,
+                    .bufferImageHeight = desc.buffer_row_count,
+                    .imageSubresource =
+                        {
+                            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                            .mipLevel = first_subresource + n,
+                            .baseArrayLayer = 0,
+                            .layerCount = 1,
+                        },
+                    .imageOffset = {.x = desc.image_offset.x, .y = desc.image_offset.y, .z = desc.image_offset.z},
+                    .imageExtent = {.width = desc.image_extent.width,
+                                    .height = desc.image_extent.height,
+                                    .depth = desc.image_extent.depth},
+                },
+            });
+        buf_offset += size_of_subresource(desc);
+    }
 
     kit.command_buffer.setImageMemoryBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, consuming_stages,
                                              std::array{
@@ -472,24 +509,15 @@ util::ref_ptr<IBuffer> Device::createBuffer(BufferType type, std::uint64_t size)
     return std::move(buffer);
 }
 
-util::ref_ptr<ITexture> Device::createTexture(Extent3u extent) {
+util::ref_ptr<ITexture> Device::createTexture(const TextureDesc& desc) {
     auto texture = util::make_new<Texture>(*this);
-    if (!texture->create(VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_UNORM,
-                         {.width = extent.width, .height = extent.height, .depth = extent.depth}, 1, 1,
-                         VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, false, VK_IMAGE_VIEW_TYPE_2D)) {
-        return nullptr;
-    }
+    if (!texture->create(desc)) { return nullptr; }
     return std::move(texture);
 }
 
-util::ref_ptr<ISampler> Device::createSampler() {
+util::ref_ptr<ISampler> Device::createSampler(const SamplerDesc& desc) {
     auto sampler = util::make_new<Sampler>(*this);
-    if (!sampler->create(VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST,
-                         VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-                         VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, 0.0f, VK_FALSE, 1.0f, VK_FALSE, VK_COMPARE_OP_ALWAYS,
-                         0.0f, 1.0f, VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK, VK_FALSE)) {
-        return nullptr;
-    }
+    if (!sampler->create(desc)) { return nullptr; }
     return std::move(sampler);
 }
 

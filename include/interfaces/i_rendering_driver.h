@@ -6,6 +6,7 @@
 #include "util/ref_ptr.h"
 
 #include <uxs/db/value.h>
+#include <uxs/utility.h>
 
 #include <limits>
 
@@ -36,6 +37,44 @@ enum class RenderTargetResult {
     FAILED,
 };
 
+enum class PrimitiveTopology {
+    POINTS = 0,
+    LINES,
+    LINE_STRIP,
+    TRIANGLES,
+    TRIANGLE_STRIP,
+};
+
+enum class BufferType {
+    VERTEX = 0,
+    CONSTANT,
+};
+
+enum class SamplerFilter {
+    MIN_MAG_MIP_POINT = 0,
+    MIN_MAG_POINT_MIP_LINEAR,
+    MIN_POINT_MAG_LINEAR_MIP_POINT,
+    MIN_POINT_MAG_MIP_LINEAR,
+    MIN_LINEAR_MAG_MIP_POINT,
+    MIN_LINEAR_MAG_POINT_MIP_LINEAR,
+    MIN_MAG_LINEAR_MIP_POINT,
+    MIN_MAG_MIP_LINEAR,
+    ANISOTROPIC,
+};
+
+enum class SamplerAddressMode {
+    REPEAT = 0,
+    MIRRORED_REPEAT,
+    CLAMP_TO_EDGE,
+    MIRROR_CLAMP_TO_EDGE,
+};
+
+enum class TextureFlags {
+    NONE = 0,
+    RENDER_TARGET = 1,
+};
+UXS_IMPLEMENT_BITWISE_OPS_FOR_ENUM(TextureFlags);
+
 struct Vec2i {
     std::int32_t x, y;
 };
@@ -61,17 +100,28 @@ struct Rect {
     Extent2u extent;
 };
 
-enum class PrimitiveTopology {
-    POINTS = 0,
-    LINES,
-    LINE_STRIP,
-    TRIANGLES,
-    TRIANGLE_STRIP,
+struct UpdateTextureDesc {
+    std::size_t buffer_offset;
+    std::uint32_t buffer_row_size;
+    std::uint32_t buffer_row_count;
+    Vec3i image_offset;
+    Extent3u image_extent;
 };
 
-enum class BufferType {
-    VERTEX = 0,
-    CONSTANT,
+struct SamplerDesc {
+    SamplerFilter filter;
+    SamplerAddressMode address_mode_u;
+    SamplerAddressMode address_mode_v;
+    SamplerAddressMode address_mode_w;
+    float min_lod;
+    float max_lod;
+    float mip_lod_bias;
+    std::uint32_t max_anisotropy;
+};
+
+struct TextureDesc {
+    TextureFlags flags;
+    Extent3u extent;
 };
 
 struct IShaderModule {
@@ -101,7 +151,8 @@ struct IRenderTarget;
 struct ITexture {
     virtual ~ITexture() = default;
     virtual util::ref_counter& getRefCounter() = 0;
-    virtual bool updateTexture(std::span<const std::uint8_t> data, Vec3i offset, Extent3u extent) = 0;
+    virtual bool updateTexture(const std::uint8_t* data, std::uint32_t first_subresource,
+                               std::span<const UpdateTextureDesc> update_subresource_descs) = 0;
     virtual util::ref_ptr<IRenderTarget> createRenderTarget(const uxs::db::value& opts) = 0;
 };
 
@@ -157,8 +208,8 @@ struct IDevice {
                                                     std::span<IShaderModule* const> shader_modules,
                                                     const uxs::db::value& config) = 0;
     virtual util::ref_ptr<IBuffer> createBuffer(BufferType type, std::uint64_t size) = 0;
-    virtual util::ref_ptr<ITexture> createTexture(Extent3u extent) = 0;
-    virtual util::ref_ptr<ISampler> createSampler() = 0;
+    virtual util::ref_ptr<ITexture> createTexture(const TextureDesc& desc) = 0;
+    virtual util::ref_ptr<ISampler> createSampler(const SamplerDesc& desc) = 0;
 };
 
 struct IRenderingDriver {
