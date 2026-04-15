@@ -1,0 +1,31 @@
+#include "surface.h"
+
+#include "device.h"
+#include "rendering_driver.h"
+#include "swap_chain.h"
+
+using namespace app3d;
+using namespace app3d::rel;
+using namespace app3d::rel::d3d12;
+
+// --------------------------------------------------------
+// Surface class implementation
+
+Surface::Surface(RenderingDriver& instance) : instance_(util::not_null{&instance}) {}
+
+Surface::~Surface() {}
+
+bool Surface::create(const WindowDescriptor& win_desc) {
+    win_desc_ = win_desc;
+    return true;
+}
+
+//@{ ISurface
+
+util::ref_ptr<ISwapChain> Surface::createSwapChain(IDevice& device, const uxs::db::value& opts) {
+    auto swap_chain = util::make_new<SwapChain>(static_cast<Device&>(device), *this);
+    if (!swap_chain->create(opts)) { return nullptr; }
+    return std::move(swap_chain);
+}
+
+//@}

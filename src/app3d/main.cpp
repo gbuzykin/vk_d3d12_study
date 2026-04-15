@@ -147,7 +147,7 @@ class App3DMainWindow final : public MainWindow {
 #define JSON(...) uxs::db::json::read_from_string(#__VA_ARGS__)
 
 int App3DMainWindow::init(int argc, char** argv) {
-    void* driver_library = loadDynamicLibrary(".", "app3d-rel-vulkan");
+    void* driver_library = loadDynamicLibrary(".", "app3d-rel-d3d12");
     if (!driver_library) { return -1; }
 
     auto* entry = (rel::GetDriverDescriptorFuncPtr)getDynamicLibraryEntry(driver_library,
