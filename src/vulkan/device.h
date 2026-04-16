@@ -44,7 +44,6 @@ class Device final : public util::ref_counter, public IDevice {
     PhysicalDevice& getPhysicalDevice() { return physical_device_; }
     VmaAllocator getAllocator() { return allocator_; }
     DevQueue& getGraphicsQueue() { return graphics_queue_; }
-    DevQueue& getPresentQueue() { return present_queue_; }
     DevQueue& getComputeQueue() { return compute_queue_; }
 
     //@{ IDevice
@@ -68,7 +67,6 @@ class Device final : public util::ref_counter, public IDevice {
     DevQueue graphics_queue_;
     DevQueue compute_queue_;
     DevQueue transfer_queue_;
-    DevQueue present_queue_;
 
     VmaAllocator allocator_{VK_NULL_HANDLE};
     VkDescriptorPool descriptor_pool_{VK_NULL_HANDLE};

@@ -24,7 +24,7 @@ SwapChain::~SwapChain() {
         ObjectDestroyer<VkSemaphore>::destroy(~*device_, kit.sem_image_acquired);
         ObjectDestroyer<VkSemaphore>::destroy(~*device_, kit.sem_rendering_complete);
         ObjectDestroyer<VkSemaphore>::destroy(~*device_, kit.sem_ready_to_present);
-        device_->getPresentQueue().releaseCommandBuffer(~kit.present_command_buffer);
+        surface_->getPresentQueue().releaseCommandBuffer(~kit.present_command_buffer);
     }
     destroyImageViews();
     ObjectDestroyer<VkSwapchainKHR>::destroy(~*device_, swap_chain_);
@@ -108,10 +108,10 @@ bool SwapChain::create(const uxs::db::value& opts) {
     for (auto& kit : submit_kits_) {
         if (!device_->createSemaphore(kit.sem_image_acquired)) { return false; }
         if (!device_->createSemaphore(kit.sem_rendering_complete)) { return false; }
-        if (device_->getPresentQueue().getFamilyIndex() != device_->getGraphicsQueue().getFamilyIndex()) {
+        if (surface_->getPresentQueue().getFamilyIndex() != device_->getGraphicsQueue().getFamilyIndex()) {
             if (!device_->createSemaphore(kit.sem_ready_to_present)) { return false; }
             VkCommandBuffer command_buffer = VK_NULL_HANDLE;
-            if (!device_->getPresentQueue().obtainCommandBuffer(command_buffer)) { return false; }
+            if (!surface_->getPresentQueue().obtainCommandBuffer(command_buffer)) { return false; }
             kit.present_command_buffer = CommandBuffer::wrap(command_buffer);
         }
     }
@@ -130,7 +130,7 @@ VkImageLayout SwapChain::getImageLayout() const { return VK_IMAGE_LAYOUT_PRESENT
 void SwapChain::imageBarrierBefore(CommandBuffer& command_buffer, std::uint32_t image_index) {}
 
 void SwapChain::imageBarrierAfter(CommandBuffer& command_buffer, std::uint32_t image_index) {
-    if (device_->getGraphicsQueue().getFamilyIndex() != device_->getPresentQueue().getFamilyIndex()) {
+    if (device_->getGraphicsQueue().getFamilyIndex() != surface_->getPresentQueue().getFamilyIndex()) {
         command_buffer.setImageMemoryBarrier(
             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
             std::array{
@@ -141,7 +141,7 @@ void SwapChain::imageBarrierAfter(CommandBuffer& command_buffer, std::uint32_t i
                     .current_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
                     .new_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
                     .current_queue_family = device_->getGraphicsQueue().getFamilyIndex(),
-                    .new_queue_family = device_->getPresentQueue().getFamilyIndex(),
+                    .new_queue_family = surface_->getPresentQueue().getFamilyIndex(),
                     .aspect = VK_IMAGE_ASPECT_COLOR_BIT,
                 }),
             });
@@ -164,7 +164,7 @@ RenderTargetResult SwapChain::submitFrameImage(std::uint32_t n_frame, std::uint3
     auto& kit = submit_kits_[n_frame];
 
     const bool queue_family_transition = device_->getGraphicsQueue().getFamilyIndex() !=
-                                         device_->getPresentQueue().getFamilyIndex();
+                                         surface_->getPresentQueue().getFamilyIndex();
 
     if (!device_->getGraphicsQueue().submitCommandBuffers(
             {std::array{kit.sem_image_acquired},
@@ -193,14 +193,14 @@ RenderTargetResult SwapChain::submitFrameImage(std::uint32_t n_frame, std::uint3
                     .current_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
                     .new_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
                     .current_queue_family = device_->getGraphicsQueue().getFamilyIndex(),
-                    .new_queue_family = device_->getPresentQueue().getFamilyIndex(),
+                    .new_queue_family = surface_->getPresentQueue().getFamilyIndex(),
                     .aspect = VK_IMAGE_ASPECT_COLOR_BIT,
                 }),
             });
 
         if (!present_command_buffer.endCommandBuffer()) { return RenderTargetResult::FAILED; }
 
-        if (!device_->getPresentQueue().submitCommandBuffers(
+        if (!surface_->getPresentQueue().submitCommandBuffers(
                 {std::array{kit.sem_rendering_complete},
                  std::array{VkPipelineStageFlags(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT)}},
                 std::array{~present_command_buffer}, std::array{kit.sem_ready_to_present}, fence)) {
@@ -210,8 +210,8 @@ RenderTargetResult SwapChain::submitFrameImage(std::uint32_t n_frame, std::uint3
         ready_to_present = kit.sem_ready_to_present;
     }
 
-    return device_->getPresentQueue().presentImages(std::array{ready_to_present},
-                                                    {std::array{swap_chain_}, std::array{image_index}});
+    return surface_->getPresentQueue().presentImages(std::array{ready_to_present},
+                                                     {std::array{swap_chain_}, std::array{image_index}});
 }
 
 void SwapChain::removeRenderTarget(RenderTarget* render_target) {

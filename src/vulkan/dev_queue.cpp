@@ -13,17 +13,14 @@ using namespace app3d::rel::vulkan;
 // --------------------------------------------------------
 // DevQueue class implementation
 
-DevQueue::DevQueue(Device& device) : device_(device) {}
-
-DevQueue::~DevQueue() { destroy(); }
-
-bool DevQueue::create() {
+bool DevQueue::create(Device& device) {
     if (family_index_ == INVALID_UINT32_VALUE) {
         logError(LOG_VK "no selected queue family");
         return false;
     }
 
-    vkGetDeviceQueue(~device_, family_index_, 0, &queue_);
+    device_ = &device;
+    vkGetDeviceQueue(~*device_, family_index_, 0, &queue_);
 
     const VkCommandPoolCreateInfo create_info{
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -31,7 +28,7 @@ bool DevQueue::create() {
         .queueFamilyIndex = family_index_,
     };
 
-    VkResult result = vkCreateCommandPool(~device_, &create_info, nullptr, &command_pool_);
+    VkResult result = vkCreateCommandPool(~*device_, &create_info, nullptr, &command_pool_);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create command pool: {}", result);
         return false;
@@ -42,7 +39,8 @@ bool DevQueue::create() {
 }
 
 void DevQueue::destroy() {
-    ObjectDestroyer<VkCommandPool>::destroy(~device_, command_pool_);
+    if (!device_) { return; }
+    ObjectDestroyer<VkCommandPool>::destroy(~*device_, command_pool_);
     command_pool_ = VK_NULL_HANDLE;
     allocated_command_buffers_.clear();
     used_command_buffer_count_ = 0;
@@ -100,7 +98,7 @@ bool DevQueue::obtainCommandBuffer(VkCommandBuffer& command_buffer) {
             .commandBufferCount = std::uint32_t(allocated_command_buffers_.size()) - used_command_buffer_count_,
         };
 
-        VkResult result = vkAllocateCommandBuffers(~device_, &allocate_info,
+        VkResult result = vkAllocateCommandBuffers(~*device_, &allocate_info,
                                                    allocated_command_buffers_.data() + used_command_buffer_count_);
         if (result != VK_SUCCESS) {
             logError(LOG_VK "couldn't allocate command buffers: {}", result);

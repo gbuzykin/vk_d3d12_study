@@ -22,14 +22,13 @@ using namespace app3d::rel::vulkan;
 // Device class implementation
 
 Device::Device(RenderingDriver& instance, PhysicalDevice& physical_device)
-    : instance_(util::not_null(&instance)), physical_device_(physical_device), graphics_queue_(*this),
-      compute_queue_(*this), transfer_queue_(*this), present_queue_(*this) {}
+    : instance_(util::not_null(&instance)), physical_device_(physical_device) {}
 
 Device::~Device() {
     graphics_queue_.destroy();
     compute_queue_.destroy();
     transfer_queue_.destroy();
-    present_queue_.destroy();
+    for (auto* surface : instance_->getSurfaces()) { surface->getPresentQueue().destroy(); }
     ObjectDestroyer<VkDescriptorPool>::destroy(device_, descriptor_pool_);
     for (auto& kit : transfer_kits_) {
         vmaDestroyBuffer(allocator_, kit.staging_buffer.handle, kit.staging_buffer.allocation);
@@ -130,21 +129,15 @@ bool Device::create(const uxs::db::value& caps) {
         return false;
     }
 
-    for (const auto* surface : instance_->getSurfaces()) {
+    for (auto* surface : instance_->getSurfaces()) {
         const std::uint32_t family_index = surface->getPresentQueueFamily();
-        if (present_queue_.getFamilyIndex() == INVALID_UINT32_VALUE) {
-            if (family_index == INVALID_UINT32_VALUE) {
-                logError(LOG_VK "couldn't obtain present queue family index");
-                return false;
-            }
-            present_queue_.setFamilyIndex(family_index);
-        } else if (present_queue_.getFamilyIndex() != family_index) {
-            logError(LOG_VK "inconsistent present queue families for surfaces");
+        if (family_index == INVALID_UINT32_VALUE) {
+            logError(LOG_VK "couldn't obtain present queue family index");
             return false;
         }
+        surface->getPresentQueue().setFamilyIndex(family_index);
+        add_queue_family(family_index, priority);
     }
-
-    add_queue_family(present_queue_.getFamilyIndex(), priority);
 
     const VkDeviceCreateInfo create_info{
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
@@ -208,10 +201,12 @@ bool Device::create(const uxs::db::value& caps) {
         return false;
     }
 
-    if (!graphics_queue_.create()) { return false; }
-    if (!compute_queue_.create()) { return false; }
-    if (!transfer_queue_.create()) { return false; }
-    if (!present_queue_.create()) { return false; }
+    if (!graphics_queue_.create(*this)) { return false; }
+    if (!compute_queue_.create(*this)) { return false; }
+    if (!transfer_queue_.create(*this)) { return false; }
+    for (auto* surface : instance_->getSurfaces()) {
+        if (!surface->getPresentQueue().create(*this)) { return false; }
+    }
 
     transfer_kits_.resize(TRANSFER_KIT_COUNT);
     for (auto& kit : transfer_kits_) {
