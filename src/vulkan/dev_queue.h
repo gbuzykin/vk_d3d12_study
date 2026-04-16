@@ -13,15 +13,14 @@ class Device;
 
 class DevQueue {
  public:
-    explicit DevQueue(Device& device);
-    ~DevQueue();
+    DevQueue() = default;
     DevQueue(const DevQueue&) = delete;
     DevQueue& operator=(const DevQueue&) = delete;
 
     std::uint32_t getFamilyIndex() const { return family_index_; }
     void setFamilyIndex(std::uint32_t family_index) { family_index_ = family_index; }
 
-    bool create();
+    bool create(Device& device);
     void destroy();
     bool obtainCommandBuffer(VkCommandBuffer& command_buffer);
     void releaseCommandBuffer(VkCommandBuffer command_buffer);
@@ -36,7 +35,7 @@ class DevQueue {
     VkQueue operator~() { return queue_; }
 
  private:
-    Device& device_;
+    Device* device_ = nullptr;
     std::uint32_t family_index_ = INVALID_UINT32_VALUE;
     VkQueue queue_{VK_NULL_HANDLE};
     VkCommandPool command_pool_{VK_NULL_HANDLE};
