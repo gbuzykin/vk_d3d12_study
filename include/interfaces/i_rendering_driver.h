@@ -4,7 +4,6 @@
 
 #include <uxs/db/value.h>
 
-#include <limits>
 #include <span>
 #include <string_view>
 
@@ -25,8 +24,6 @@
     static_assert(true)
 
 namespace app3d::rel {
-
-constexpr std::uint32_t INVALID_UINT32_VALUE = std::numeric_limits<std::uint32_t>::max();
 
 enum class PlatformType {
     PLATFORM_WIN32 = 0,

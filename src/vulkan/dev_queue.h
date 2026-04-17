@@ -2,6 +2,7 @@
 
 #include "vulkan_api.h"
 
+#include "common/core_defs.h"
 #include "interfaces/i_rendering_driver.h"
 #include "util/range_helpers.h"
 
