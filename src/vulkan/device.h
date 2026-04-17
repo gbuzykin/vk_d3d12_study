@@ -22,14 +22,6 @@ class Device final : public util::ref_counter, public IDevice {
     bool waitForFences(std::span<const VkFence> fences, VkBool32 wait_for_all, std::uint64_t timeout);
     bool resetFences(std::span<const VkFence> fences);
 
-    bool obtainDescriptorSet(VkDescriptorSetLayout, VkDescriptorSet& descriptor_set);
-    void releaseDescriptorSet(VkDescriptorSet descriptor_set);
-    void updateDescriptorSets(std::span<const VkWriteDescriptorSet> write_descriptors,
-                              std::span<const VkCopyDescriptorSet> copy_descriptors) {
-        vkUpdateDescriptorSets(device_, std::uint32_t(write_descriptors.size()), write_descriptors.data(),
-                               std::uint32_t(copy_descriptors.size()), copy_descriptors.data());
-    }
-
     bool updateBuffer(const void* data, VkDeviceSize data_size, VkBuffer dst, VkDeviceSize offset,
                       VkPipelineStageFlags generating_stages, VkPipelineStageFlags consuming_stages,
                       VkAccessFlags current_access, VkAccessFlags new_access,
@@ -39,6 +31,12 @@ class Device final : public util::ref_counter, public IDevice {
                      VkPipelineStageFlags consuming_stages, VkAccessFlags current_access, VkAccessFlags new_access,
                      VkImageLayout current_layout, VkImageLayout new_layout, VkImageAspectFlags aspect,
                      std::span<const VkSemaphore> signal_semaphores);
+
+    void updateDescriptorSets(std::span<const VkWriteDescriptorSet> write_descriptors,
+                              std::span<const VkCopyDescriptorSet> copy_descriptors) {
+        vkUpdateDescriptorSets(device_, std::uint32_t(write_descriptors.size()), write_descriptors.data(),
+                               std::uint32_t(copy_descriptors.size()), copy_descriptors.data());
+    }
 
     VkDevice operator~() { return device_; }
     PhysicalDevice& getPhysicalDevice() { return physical_device_; }
@@ -64,12 +62,10 @@ class Device final : public util::ref_counter, public IDevice {
     util::ref_ptr<RenderingDriver> instance_;
     PhysicalDevice& physical_device_;
     VkDevice device_{VK_NULL_HANDLE};
+    VmaAllocator allocator_{VK_NULL_HANDLE};
     DevQueue graphics_queue_;
     DevQueue compute_queue_;
     DevQueue transfer_queue_;
-
-    VmaAllocator allocator_{VK_NULL_HANDLE};
-    VkDescriptorPool descriptor_pool_{VK_NULL_HANDLE};
 
     struct StagingBuffer {
         VkBuffer handle{VK_NULL_HANDLE};
@@ -89,9 +85,6 @@ class Device final : public util::ref_counter, public IDevice {
     uxs::inline_dynarray<TransferKit, TRANSFER_KIT_COUNT> transfer_kits_;
 
     bool createStagingBuffer(VkDeviceSize size, StagingBuffer& buffer);
-
-    bool createDescriptorPool(std::uint32_t max_sets, std::span<const VkDescriptorPoolSize> descriptor_types,
-                              VkDescriptorPool& descriptor_pool);
 };
 
 }  // namespace app3d::rel::vulkan

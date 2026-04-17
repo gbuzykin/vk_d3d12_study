@@ -20,6 +20,7 @@ using namespace app3d::rel::vulkan;
 PipelineLayout::PipelineLayout(Device& device) : device_(util::not_null(&device)) {}
 
 PipelineLayout::~PipelineLayout() {
+    ObjectDestroyer<VkDescriptorPool>::destroy(~*device_, descriptor_pool_);
     ObjectDestroyer<VkPipelineLayout>::destroy(~*device_, pipeline_layout_);
     for (const auto& ds_layout : descriptor_set_layouts_) {
         ObjectDestroyer<VkDescriptorSetLayout>::destroy(~*device_, ds_layout);
@@ -41,7 +42,7 @@ bool PipelineLayout::create(const uxs::db::value& config) {
         uxs::inline_dynarray<VkDescriptorSetLayoutBinding> bindings;
         bindings.reserve(layout.size());
 
-        const auto& list = layout.value("desc_list");
+        const auto& list = layout.value("descriptor_list");
         std::array<std::uint32_t, unsigned(BindingType::COUNT)> slots{};
         for (const auto& desc : list.as_array()) {
             const std::uint32_t binding = desc.value<std::uint32_t>("binding");
@@ -94,9 +95,65 @@ bool PipelineLayout::create(const uxs::db::value& config) {
         return false;
     }
 
+    if (!createDescriptorPool(8,
+                              std::array{
+                                  VkDescriptorPoolSize{
+                                      .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                                      .descriptorCount = 4,
+                                  },
+                                  VkDescriptorPoolSize{
+                                      .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                                      .descriptorCount = 4,
+                                  },
+                              },
+                              descriptor_pool_)) {
+        return false;
+    }
+
     return true;
+}
+
+bool PipelineLayout::obtainDescriptorSet(std::uint32_t layout_index, VkDescriptorSet& descriptor_set) {
+    const VkDescriptorSetAllocateInfo allocate_info{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = descriptor_pool_,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &descriptor_set_layouts_[layout_index],
+    };
+
+    VkResult result = vkAllocateDescriptorSets(~*device_, &allocate_info, &descriptor_set);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't allocate descriptor sets: {}", result);
+        return false;
+    }
+
+    return true;
+}
+
+void PipelineLayout::releaseDescriptorSet(VkDescriptorSet descriptor_set) {
+    vkFreeDescriptorSets(~*device_, descriptor_pool_, 1, &descriptor_set);
 }
 
 //@{ IPipelineLayout
 
 //@}
+
+bool PipelineLayout::createDescriptorPool(std::uint32_t max_sets,
+                                          std::span<const VkDescriptorPoolSize> descriptor_types,
+                                          VkDescriptorPool& descriptor_pool) {
+    const VkDescriptorPoolCreateInfo create_info{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
+        .maxSets = max_sets,
+        .poolSizeCount = std::uint32_t(descriptor_types.size()),
+        .pPoolSizes = descriptor_types.data(),
+    };
+
+    VkResult result = vkCreateDescriptorPool(~*device_, &create_info, nullptr, &descriptor_pool);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't create descriptor pool: {}", result);
+        return false;
+    }
+
+    return true;
+}

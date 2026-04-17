@@ -15,10 +15,10 @@ using namespace app3d::rel::vulkan;
 DescriptorSet::DescriptorSet(Device& device, PipelineLayout& pipeline_layout)
     : device_(util::not_null{&device}), pipeline_layout_(util::not_null{&pipeline_layout}) {}
 
-DescriptorSet::~DescriptorSet() { device_->releaseDescriptorSet(descriptor_set_); }
+DescriptorSet::~DescriptorSet() { pipeline_layout_->releaseDescriptorSet(descriptor_set_); }
 
-bool DescriptorSet::create() {
-    return device_->obtainDescriptorSet(pipeline_layout_->getDescriptorSetLayout(0), descriptor_set_);
+bool DescriptorSet::create(std::uint32_t layout_index) {
+    return pipeline_layout_->obtainDescriptorSet(layout_index, descriptor_set_);
 }
 
 //@{ IDescriptorSet

@@ -217,7 +217,7 @@ bool App3DMainWindow::initScene() {
 
     const auto pipeline_layout_config = JSON({
         "descriptor_set_layouts" : [ {
-            "desc_list" : [
+            "descriptor_list" : [
                 {"binding" : 0, "type" : "texture_sampler", "count" : 1, "stages" : ["pixel"]},
                 {"binding" : 1, "type" : "constant_buffer", "count" : 1, "stages" : ["vertex"]}
             ]

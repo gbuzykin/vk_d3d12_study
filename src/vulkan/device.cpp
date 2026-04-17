@@ -25,15 +25,14 @@ Device::Device(RenderingDriver& instance, PhysicalDevice& physical_device)
     : instance_(util::not_null(&instance)), physical_device_(physical_device) {}
 
 Device::~Device() {
-    graphics_queue_.destroy();
-    compute_queue_.destroy();
-    transfer_queue_.destroy();
-    for (auto* surface : instance_->getSurfaces()) { surface->getPresentQueue().destroy(); }
-    ObjectDestroyer<VkDescriptorPool>::destroy(device_, descriptor_pool_);
     for (auto& kit : transfer_kits_) {
         vmaDestroyBuffer(allocator_, kit.staging_buffer.handle, kit.staging_buffer.allocation);
         ObjectDestroyer<VkFence>::destroy(device_, kit.fence);
     }
+    graphics_queue_.destroy();
+    compute_queue_.destroy();
+    transfer_queue_.destroy();
+    for (auto* surface : instance_->getSurfaces()) { surface->getPresentQueue().destroy(); }
     vmaDestroyAllocator(allocator_);
     ObjectDestroyer<VkDevice>::destroy(device_);
 }
@@ -223,21 +222,6 @@ bool Device::create(const uxs::db::value& caps) {
         if (!createFence(true, kit.fence)) { return false; }
     }
 
-    if (!createDescriptorPool(8,
-                              std::array{
-                                  VkDescriptorPoolSize{
-                                      .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                                      .descriptorCount = 4,
-                                  },
-                                  VkDescriptorPoolSize{
-                                      .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                                      .descriptorCount = 4,
-                                  },
-                              },
-                              descriptor_pool_)) {
-        return false;
-    }
-
     return true;
 }
 
@@ -281,27 +265,6 @@ bool Device::resetFences(std::span<const VkFence> fences) {
         return false;
     }
     return true;
-}
-
-bool Device::obtainDescriptorSet(VkDescriptorSetLayout descriptor_set_layout, VkDescriptorSet& descriptor_set) {
-    const VkDescriptorSetAllocateInfo allocate_info{
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool = descriptor_pool_,
-        .descriptorSetCount = 1,
-        .pSetLayouts = &descriptor_set_layout,
-    };
-
-    VkResult result = vkAllocateDescriptorSets(device_, &allocate_info, &descriptor_set);
-    if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't allocate descriptor sets: {}", result);
-        return false;
-    }
-
-    return true;
-}
-
-void Device::releaseDescriptorSet(VkDescriptorSet descriptor_set) {
-    vkFreeDescriptorSets(device_, descriptor_pool_, 1, &descriptor_set);
 }
 
 bool Device::updateBuffer(const void* data, VkDeviceSize data_size, VkBuffer dst, VkDeviceSize offset,
@@ -489,7 +452,7 @@ util::ref_ptr<ISampler> Device::createSampler(const SamplerOpts& opts) {
 
 util::ref_ptr<IDescriptorSet> Device::createDescriptorSet(IPipelineLayout& pipeline_layout) {
     auto descriptor_set = util::make_new<DescriptorSet>(*this, static_cast<PipelineLayout&>(pipeline_layout));
-    if (!descriptor_set->create()) { return nullptr; }
+    if (!descriptor_set->create(0)) { return nullptr; }
     return std::move(descriptor_set);
 }
 
@@ -522,24 +485,5 @@ bool Device::createStagingBuffer(VkDeviceSize size, StagingBuffer& buffer) {
     }
 
     buffer.size = size;
-    return true;
-}
-
-bool Device::createDescriptorPool(std::uint32_t max_sets, std::span<const VkDescriptorPoolSize> descriptor_types,
-                                  VkDescriptorPool& descriptor_pool) {
-    const VkDescriptorPoolCreateInfo create_info{
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
-        .maxSets = max_sets,
-        .poolSizeCount = std::uint32_t(descriptor_types.size()),
-        .pPoolSizes = descriptor_types.data(),
-    };
-
-    VkResult result = vkCreateDescriptorPool(device_, &create_info, nullptr, &descriptor_pool);
-    if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't create descriptor pool: {}", result);
-        return false;
-    }
-
     return true;
 }

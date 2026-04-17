@@ -14,7 +14,7 @@ class DescriptorSet final : public util::ref_counter, public IDescriptorSet {
     DescriptorSet(Device& device, PipelineLayout& pipeline_layout);
     ~DescriptorSet() override;
 
-    bool create();
+    bool create(std::uint32_t layout_index);
 
     VkDescriptorSet operator~() { return descriptor_set_; }
     PipelineLayout& getLayout() { return *pipeline_layout_; }
