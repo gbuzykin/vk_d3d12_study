@@ -126,15 +126,20 @@ bool RenderTarget::create(const uxs::db::value& opts) {
 bool RenderTarget::createFrameResources() {
     image_extent_ = frame_image_provider_->getImageExtent();
 
-    const std::uint32_t image_count = frame_image_provider_->getImageCount();
+    for (auto& kit : frame_render_kits_) {
+        uxs::inline_dynarray<VkFramebufferAttachmentImageInfo, 2> attachment_infos;
 
-    frame_resources_.resize(image_count);
+        const VkFormat image_format = frame_image_provider_->getImageFormat();
 
-    for (std::uint32_t n = 0; n < image_count; ++n) {
-        auto& res = frame_resources_[n];
-
-        uxs::inline_dynarray<VkImageView, 2> attachments;
-        attachments.push_back(frame_image_provider_->getImageView(n));
+        attachment_infos.push_back({
+            .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_ATTACHMENT_IMAGE_INFO,
+            .usage = frame_image_provider_->getImageUsage(),
+            .width = image_extent_.width,
+            .height = image_extent_.height,
+            .layerCount = 1,
+            .viewFormatCount = 1,
+            .pViewFormats = &image_format,
+        });
 
         if (use_depth_) {
             const VkImageCreateInfo create_info{
@@ -153,8 +158,8 @@ bool RenderTarget::createFrameResources() {
 
             const VmaAllocationCreateInfo alloc_info{.usage = VMA_MEMORY_USAGE_AUTO};
 
-            VkResult result = vmaCreateImage(device_->getAllocator(), &create_info, &alloc_info, &res.depth_image,
-                                             &res.depth_allocation, nullptr);
+            VkResult result = vmaCreateImage(device_->getAllocator(), &create_info, &alloc_info, &kit.depth_image,
+                                             &kit.depth_allocation, nullptr);
             if (result != VK_SUCCESS) {
                 logError(LOG_VK "couldn't create depth buffer: {}", result);
                 return false;
@@ -162,7 +167,7 @@ bool RenderTarget::createFrameResources() {
 
             const VkImageViewCreateInfo view_create_info{
                 .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-                .image = res.depth_image,
+                .image = kit.depth_image,
                 .viewType = VK_IMAGE_VIEW_TYPE_2D,
                 .format = depth_format_,
                 .subresourceRange =
@@ -175,27 +180,41 @@ bool RenderTarget::createFrameResources() {
                     },
             };
 
-            result = vkCreateImageView(~*device_, &view_create_info, nullptr, &res.depth_image_view);
+            result = vkCreateImageView(~*device_, &view_create_info, nullptr, &kit.depth_image_view);
             if (result != VK_SUCCESS) {
                 logError(LOG_VK "couldn't create depth buffer view: {}", result);
                 return false;
             }
 
-            attachments.push_back(res.depth_image_view);
+            attachment_infos.push_back({
+                .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_ATTACHMENT_IMAGE_INFO,
+                .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                .width = image_extent_.width,
+                .height = image_extent_.height,
+                .layerCount = 1,
+                .viewFormatCount = 1,
+                .pViewFormats = &depth_format_,
+            });
         }
+
+        const VkFramebufferAttachmentsCreateInfo attachments_create_info{
+            .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_ATTACHMENTS_CREATE_INFO,
+            .attachmentImageInfoCount = std::uint32_t(attachment_infos.size()),
+            .pAttachmentImageInfos = attachment_infos.data(),
+        };
 
         const VkFramebufferCreateInfo framebuffer_create_info{
             .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+            .pNext = &attachments_create_info,
+            .flags = VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT,
             .renderPass = render_pass_,
-            .attachmentCount = std::uint32_t(attachments.size()),
-            .pAttachments = attachments.data(),
+            .attachmentCount = std::uint32_t(attachment_infos.size()),
             .width = image_extent_.width,
             .height = image_extent_.height,
             .layers = 1,
         };
 
-        VkResult result = vkCreateFramebuffer(~*device_, &framebuffer_create_info, nullptr,
-                                              &frame_resources_[n].framebuffer);
+        VkResult result = vkCreateFramebuffer(~*device_, &framebuffer_create_info, nullptr, &kit.framebuffer);
         if (result != VK_SUCCESS) {
             logError(LOG_VK "couldn't create framebuffer: {}", result);
             return false;
@@ -207,15 +226,16 @@ bool RenderTarget::createFrameResources() {
 }
 
 void RenderTarget::destroyFrameResources() {
-    for (const auto& kit : frame_render_kits_) {
+    for (auto& kit : frame_render_kits_) {
         device_->waitForFences(std::array{kit.fence}, VK_FALSE, FINISH_FRAME_TIMEOUT);
+        ObjectDestroyer<VkFramebuffer>::destroy(~*device_, kit.framebuffer);
+        ObjectDestroyer<VkImageView>::destroy(~*device_, kit.depth_image_view);
+        vmaDestroyImage(device_->getAllocator(), kit.depth_image, kit.depth_allocation);
+        kit.framebuffer = VK_NULL_HANDLE;
+        kit.depth_image_view = VK_NULL_HANDLE;
+        kit.depth_image = VK_NULL_HANDLE;
+        kit.depth_allocation = VK_NULL_HANDLE;
     }
-    for (const auto& item : frame_resources_) {
-        ObjectDestroyer<VkFramebuffer>::destroy(~*device_, item.framebuffer);
-        ObjectDestroyer<VkImageView>::destroy(~*device_, item.depth_image_view);
-        vmaDestroyImage(device_->getAllocator(), item.depth_image, item.depth_allocation);
-    }
-    frame_resources_.clear();
 }
 
 //@{ IRenderTarget
@@ -241,13 +261,19 @@ RenderTargetResult RenderTarget::beginRenderTarget(const Color4f& clear_color, f
     frame_image_provider_->imageBarrierBefore(kit.command_buffer, image_index);
 
     uxs::inline_dynarray<VkClearValue, 2> clear_values;
+    uxs::inline_dynarray<VkImageView, 2> attachments;
+
     clear_values.push_back(VkClearValue{.color = {{clear_color.r, clear_color.g, clear_color.b, clear_color.a}}});
-    if (use_depth_) { clear_values.push_back(VkClearValue{.depthStencil = {depth, stencil}}); }
+    attachments.push_back(frame_image_provider_->getImageView(image_index));
+    if (use_depth_) {
+        clear_values.push_back(VkClearValue{.depthStencil = {depth, stencil}});
+        attachments.push_back(kit.depth_image_view);
+    }
 
     kit.command_buffer.beginRenderPass(
-        render_pass_, frame_resources_[image_index].framebuffer,
-        VkRect2D{.extent = {.width = image_extent_.width, .height = image_extent_.height}}, clear_values,
-        VK_SUBPASS_CONTENTS_INLINE);
+        render_pass_, frame_render_kits_[image_index].framebuffer,
+        VkRect2D{.extent = {.width = image_extent_.width, .height = image_extent_.height}}, VK_SUBPASS_CONTENTS_INLINE,
+        clear_values, attachments);
 
     current_pipeline_ = nullptr;
     current_image_index_ = image_index;

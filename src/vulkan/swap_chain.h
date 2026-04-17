@@ -31,6 +31,7 @@ class SwapChain final : public FrameImageProvider, public ISwapChain {
     std::uint32_t getFifCount() const override { return 3; }
     VkExtent2D getImageExtent() const override { return image_extent_; }
     VkFormat getImageFormat() const override;
+    VkImageUsageFlags getImageUsage() const override;
     VkPipelineStageFlags getImageConsumingStages() const override;
     VkAccessFlags getImageAccess() const override;
     VkImageLayout getImageLayout() const override;

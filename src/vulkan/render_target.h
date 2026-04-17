@@ -49,17 +49,11 @@ class RenderTarget final : public util::ref_counter, public IRenderTarget {
     RenderTargetResult render_target_status_{RenderTargetResult::SUCCESS};
     Pipeline* current_pipeline_ = nullptr;
 
-    struct FrameResources {
+    struct FrameRenderKit {
         VkImage depth_image{VK_NULL_HANDLE};
         VmaAllocation depth_allocation{VK_NULL_HANDLE};
         VkImageView depth_image_view{VK_NULL_HANDLE};
         VkFramebuffer framebuffer{VK_NULL_HANDLE};
-    };
-
-    std::uint32_t current_image_index_ = INVALID_UINT32_VALUE;
-    uxs::inline_dynarray<FrameResources, 3> frame_resources_;
-
-    struct FrameRenderKit {
         VkFence fence{VK_NULL_HANDLE};
         CommandBuffer command_buffer;
     };
@@ -68,6 +62,7 @@ class RenderTarget final : public util::ref_counter, public IRenderTarget {
     static constexpr std::uint64_t ACQUIRE_FRAME_IMAGE_TIMEOUT = 2'000'000'000;
 
     std::uint32_t n_frame_ = 0;
+    std::uint32_t current_image_index_ = INVALID_UINT32_VALUE;
     uxs::inline_dynarray<FrameRenderKit, 3> frame_render_kits_;
 };
 
