@@ -31,6 +31,7 @@ Device::~Device() {
     for (auto* surface : instance_->getSurfaces()) { surface->getPresentQueue().destroy(); }
     ObjectDestroyer<VkDescriptorPool>::destroy(device_, descriptor_pool_);
     for (auto& kit : transfer_kits_) {
+        waitForFences(std::array{kit.fence}, VK_FALSE, FINISH_TRANSFER_TIMEOUT);
         vmaDestroyBuffer(allocator_, kit.staging_buffer.handle, kit.staging_buffer.allocation);
         ObjectDestroyer<VkFence>::destroy(device_, kit.fence);
     }
@@ -42,6 +43,7 @@ bool Device::create(const uxs::db::value& caps) {
     std::vector<const char*> device_extensions;
     device_extensions.reserve(32);
     device_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    device_extensions.push_back(VK_KHR_IMAGELESS_FRAMEBUFFER_EXTENSION_NAME);
     device_extensions.push_back(VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME);
 
     const char* portability_subset_extension_name = "VK_KHR_portability_subset";
@@ -56,14 +58,20 @@ bool Device::create(const uxs::db::value& caps) {
         }
     }
 
-    VkPhysicalDeviceExtendedDynamicStateFeaturesEXT features_ext{
+    VkPhysicalDeviceImagelessFramebufferFeatures imageless_framebuffer_features{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGELESS_FRAMEBUFFER_FEATURES,
+        .imagelessFramebuffer = VK_TRUE,
+    };
+
+    VkPhysicalDeviceExtendedDynamicStateFeaturesEXT dynamic_state_features{
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT,
+        .pNext = &imageless_framebuffer_features,
         .extendedDynamicState = VK_TRUE,
     };
 
     VkPhysicalDeviceFeatures2 features2{
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-        .pNext = &features_ext,
+        .pNext = &dynamic_state_features,
         .features = physical_device_.getFeatures(),
     };
 

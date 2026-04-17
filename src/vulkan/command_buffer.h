@@ -73,7 +73,8 @@ class CommandBuffer {
     }
 
     void beginRenderPass(VkRenderPass render_pass, VkFramebuffer framebuffer, VkRect2D render_area,
-                         std::span<const VkClearValue> clear_values, VkSubpassContents subpass_contents);
+                         VkSubpassContents subpass_contents, std::span<const VkClearValue> clear_values,
+                         std::span<const VkImageView> attachments);
     void endRenderPass() { vkCmdEndRenderPass(command_buffer_); }
 
     VkCommandBuffer operator~() { return command_buffer_; }

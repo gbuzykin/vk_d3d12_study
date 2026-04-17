@@ -16,6 +16,7 @@ class FrameImageProvider : public util::ref_counter {
     virtual std::uint32_t getFifCount() const = 0;
     virtual VkFormat getImageFormat() const = 0;
     virtual VkExtent2D getImageExtent() const = 0;
+    virtual VkImageUsageFlags getImageUsage() const = 0;
     virtual VkPipelineStageFlags getImageConsumingStages() const = 0;
     virtual VkAccessFlags getImageAccess() const = 0;
     virtual VkImageLayout getImageLayout() const = 0;
