@@ -46,15 +46,15 @@ class RenderTarget final : public util::ref_counter, public IRenderTarget {
     util::ref_ptr<FrameImageProvider> frame_image_provider_;
     bool use_depth_ = false;
     VkExtent2D image_extent_{};
-    VkFormat depth_format_{VK_FORMAT_D16_UNORM};
+    VkFormat depth_stencil_format_{VK_FORMAT_D16_UNORM};
     VkRenderPass render_pass_{VK_NULL_HANDLE};
     RenderTargetResult render_target_status_{RenderTargetResult::SUCCESS};
     Pipeline* current_pipeline_ = nullptr;
 
     struct FrameRenderKit {
-        VkImage depth_image{VK_NULL_HANDLE};
-        VmaAllocation depth_allocation{VK_NULL_HANDLE};
-        VkImageView depth_image_view{VK_NULL_HANDLE};
+        VkImage depth_stencil_image{VK_NULL_HANDLE};
+        VmaAllocation depth_stencil_allocation{VK_NULL_HANDLE};
+        VkImageView depth_stencil_image_view{VK_NULL_HANDLE};
         VkFramebuffer framebuffer{VK_NULL_HANDLE};
         VkFence fence{VK_NULL_HANDLE};
         CommandBuffer command_buffer;

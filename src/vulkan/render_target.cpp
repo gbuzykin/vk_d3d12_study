@@ -54,7 +54,7 @@ bool RenderTarget::create(const uxs::db::value& opts) {
 
     if (use_depth_) {
         attachments_descriptions.push_back(VkAttachmentDescription{
-            .format = depth_format_,
+            .format = depth_stencil_format_,
             .samples = VK_SAMPLE_COUNT_1_BIT,
             .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
             .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
@@ -70,7 +70,7 @@ bool RenderTarget::create(const uxs::db::value& opts) {
         .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
     }};
 
-    const VkAttachmentReference depth_attachment{
+    const VkAttachmentReference depth_stencil_attachment{
         .attachment = 1,
         .layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
     };
@@ -79,7 +79,7 @@ bool RenderTarget::create(const uxs::db::value& opts) {
         Wrapper<VkSubpassDescription>::unwrap({
             .pipeline_type = VK_PIPELINE_BIND_POINT_GRAPHICS,
             .color_attachments = color_attachments,
-            .depth_stencil_attachment = use_depth_ ? &depth_attachment : nullptr,
+            .depth_stencil_attachment = use_depth_ ? &depth_stencil_attachment : nullptr,
         }),
     };
 
@@ -145,7 +145,7 @@ bool RenderTarget::createFrameResources() {
             const VkImageCreateInfo create_info{
                 .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                 .imageType = VK_IMAGE_TYPE_2D,
-                .format = depth_format_,
+                .format = depth_stencil_format_,
                 .extent = {.width = image_extent_.width, .height = image_extent_.height, .depth = 1},
                 .mipLevels = 1,
                 .arrayLayers = 1,
@@ -158,18 +158,18 @@ bool RenderTarget::createFrameResources() {
 
             const VmaAllocationCreateInfo alloc_info{.usage = VMA_MEMORY_USAGE_AUTO};
 
-            VkResult result = vmaCreateImage(device_->getAllocator(), &create_info, &alloc_info, &kit.depth_image,
-                                             &kit.depth_allocation, nullptr);
+            VkResult result = vmaCreateImage(device_->getAllocator(), &create_info, &alloc_info,
+                                             &kit.depth_stencil_image, &kit.depth_stencil_allocation, nullptr);
             if (result != VK_SUCCESS) {
-                logError(LOG_VK "couldn't create depth buffer: {}", result);
+                logError(LOG_VK "couldn't create depth&stencil image: {}", result);
                 return false;
             }
 
             const VkImageViewCreateInfo view_create_info{
                 .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-                .image = kit.depth_image,
+                .image = kit.depth_stencil_image,
                 .viewType = VK_IMAGE_VIEW_TYPE_2D,
-                .format = depth_format_,
+                .format = depth_stencil_format_,
                 .subresourceRange =
                     {
                         .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
@@ -180,9 +180,9 @@ bool RenderTarget::createFrameResources() {
                     },
             };
 
-            result = vkCreateImageView(~*device_, &view_create_info, nullptr, &kit.depth_image_view);
+            result = vkCreateImageView(~*device_, &view_create_info, nullptr, &kit.depth_stencil_image_view);
             if (result != VK_SUCCESS) {
-                logError(LOG_VK "couldn't create depth buffer view: {}", result);
+                logError(LOG_VK "couldn't create depth&stencil image view: {}", result);
                 return false;
             }
 
@@ -193,7 +193,7 @@ bool RenderTarget::createFrameResources() {
                 .height = image_extent_.height,
                 .layerCount = 1,
                 .viewFormatCount = 1,
-                .pViewFormats = &depth_format_,
+                .pViewFormats = &depth_stencil_format_,
             });
         }
 
@@ -229,12 +229,12 @@ void RenderTarget::destroyFrameResources() {
     for (auto& kit : frame_render_kits_) {
         device_->waitForFences(std::array{kit.fence}, VK_FALSE, FINISH_FRAME_TIMEOUT);
         ObjectDestroyer<VkFramebuffer>::destroy(~*device_, kit.framebuffer);
-        ObjectDestroyer<VkImageView>::destroy(~*device_, kit.depth_image_view);
-        vmaDestroyImage(device_->getAllocator(), kit.depth_image, kit.depth_allocation);
+        ObjectDestroyer<VkImageView>::destroy(~*device_, kit.depth_stencil_image_view);
+        vmaDestroyImage(device_->getAllocator(), kit.depth_stencil_image, kit.depth_stencil_allocation);
         kit.framebuffer = VK_NULL_HANDLE;
-        kit.depth_image_view = VK_NULL_HANDLE;
-        kit.depth_image = VK_NULL_HANDLE;
-        kit.depth_allocation = VK_NULL_HANDLE;
+        kit.depth_stencil_image_view = VK_NULL_HANDLE;
+        kit.depth_stencil_image = VK_NULL_HANDLE;
+        kit.depth_stencil_allocation = VK_NULL_HANDLE;
     }
 }
 
@@ -267,7 +267,7 @@ RenderTargetResult RenderTarget::beginRenderTarget(const Color4f& clear_color, f
     attachments.push_back(frame_image_provider_->getImageView(image_index));
     if (use_depth_) {
         clear_values.push_back(VkClearValue{.depthStencil = {depth, stencil}});
-        attachments.push_back(kit.depth_image_view);
+        attachments.push_back(kit.depth_stencil_image_view);
     }
 
     kit.command_buffer.beginRenderPass(
