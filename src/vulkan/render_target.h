@@ -2,6 +2,8 @@
 
 #include "command_buffer.h"
 
+#include "common/core_defs.h"
+
 #include <uxs/dynarray.h>
 
 namespace app3d::rel::vulkan {

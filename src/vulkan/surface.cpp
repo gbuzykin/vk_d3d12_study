@@ -6,6 +6,8 @@
 #include "swap_chain.h"
 #include "vulkan_logger.h"
 
+#include "common/core_defs.h"
+
 using namespace app3d;
 using namespace app3d::rel;
 using namespace app3d::rel::vulkan;

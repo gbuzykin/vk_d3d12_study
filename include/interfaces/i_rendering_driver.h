@@ -8,8 +8,6 @@
 #include <uxs/db/value.h>
 #include <uxs/utility.h>
 
-#include <limits>
-
 #if defined(WIN32)
 #    define APP3D_ENTRY_EXPORT extern "C" __declspec(dllexport)
 #elif defined(__linux__)
@@ -27,8 +25,6 @@
     static_assert(true)
 
 namespace app3d::rel {
-
-constexpr std::uint32_t INVALID_UINT32_VALUE = std::numeric_limits<std::uint32_t>::max();
 
 enum class RenderTargetResult {
     SUCCESS = 0,
