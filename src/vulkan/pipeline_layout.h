@@ -50,16 +50,15 @@ class PipelineLayout : public util::ref_counter, public IPipelineLayout {
     VkPipelineLayout operator~() { return pipeline_layout_; }
 
     //@{ IPipelineLayout
-    //@}
-
-    //@{ IPipelineLayout
     util::ref_counter& getRefCounter() override { return *this; }
     util::ref_ptr<IDescriptorSet> createDescriptorSet(std::uint32_t set_layout_index) override;
+    void resetDescriptorAllocator() override;
     //@}
 
  private:
     util::ref_ptr<Device> device_;
     VkPipelineLayout pipeline_layout_{VK_NULL_HANDLE};
+    VkDescriptorPool desc_pool_{VK_NULL_HANDLE};
 
     uxs::inline_dynarray<VkDescriptorSetLayout> set_layouts_;
     uxs::inline_dynarray<std::uint32_t> binding_offsets_;
@@ -72,6 +71,8 @@ class PipelineLayout : public util::ref_counter, public IPipelineLayout {
             bindings_[slot + n][unsigned(binding_type)] = Binding{type, binding, n};
         }
     }
+
+    bool createDescriptorPool(std::uint32_t total_max_sets, std::span<const VkDescriptorPoolSize> desc_counts);
 };
 
 }  // namespace app3d::rel::vulkan

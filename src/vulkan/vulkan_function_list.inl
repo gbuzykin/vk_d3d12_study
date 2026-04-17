@@ -139,6 +139,7 @@ DEVICE_LEVEL_VK_FUNCTION(vkFlushMappedMemoryRanges);
 
 DEVICE_LEVEL_VK_FUNCTION(vkCreateDescriptorPool);
 DEVICE_LEVEL_VK_FUNCTION(vkDestroyDescriptorPool);
+DEVICE_LEVEL_VK_FUNCTION(vkResetDescriptorPool);
 DEVICE_LEVEL_VK_FUNCTION(vkCreateDescriptorSetLayout);
 DEVICE_LEVEL_VK_FUNCTION(vkDestroyDescriptorSetLayout);
 DEVICE_LEVEL_VK_FUNCTION(vkAllocateDescriptorSets);
