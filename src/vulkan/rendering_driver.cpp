@@ -36,6 +36,12 @@ bool RenderingDriver::init(const uxs::db::value& app_info) {
     if (!createInstance(app_info)) { return false; }
     if (!loadPhysicalDeviceList()) { return false; }
 
+    uxs::db::value platform_args;
+    platform_args["args"] = uxs::db::value(
+        uxs::db::array_tag, {"-spirv", "-O3", "-Dbinding(n)=[[vk::binding(n)]]", "-Dlocation(n)=[[vk::location(n)]]"});
+
+    hlsl_compiler_.setPlatformArgs(platform_args);
+
     surfaces_.reserve(4);
     return true;
 }
@@ -73,6 +79,11 @@ util::ref_ptr<IDevice> RenderingDriver::createDevice(std::uint32_t device_index,
     auto device = util::make_new<Device>(*this, physical_device);
     if (!device->create(caps)) { return nullptr; }
     return std::move(device);
+}
+
+DataBlob RenderingDriver::compileShader(const DataBlob& source_text, const uxs::db::value& args,
+                                        DataBlob& compiler_output) {
+    return hlsl_compiler_.compileShader(source_text, args, compiler_output);
 }
 
 //@}
@@ -143,12 +154,11 @@ bool RenderingDriver::createInstance(const uxs::db::value& app_info) {
         }
     }
 
-    const auto app_name = app_info.value<std::string>("name");
     const auto version = app_info.value("version");
 
     const VkApplicationInfo vk_app_info{
         .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        .pApplicationName = app_name.c_str(),
+        .pApplicationName = app_info.value_or<const char*>("name", ""),
         .applicationVersion = VK_MAKE_VERSION(version.value<std::uint32_t>("major"),
                                               version.value<std::uint32_t>("minor"),
                                               version.value<std::uint32_t>("patch")),

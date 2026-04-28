@@ -1,5 +1,5 @@
 struct VertexIn {
-    [[vk::location(0)]] float3 pos : POSITION;
+    location(0) float3 pos : POSITION;
 };
 
 struct VertexOut {

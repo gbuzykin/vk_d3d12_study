@@ -8,6 +8,7 @@
 #include <array>
 #include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <vector>
 
 using namespace app3d;
@@ -22,7 +23,7 @@ class MainWindow::Implementation {
     explicit Implementation(MainWindow& main_window) : main_window_(main_window) {}
     ~Implementation();
 
-    bool createWindow(const std::string& title, std::uint32_t width, std::uint32_t height);
+    bool createWindow(const char* title, std::uint32_t width, std::uint32_t height);
     void showWindow();
     int mainLoop();
 
@@ -71,7 +72,7 @@ MainWindow::Implementation::~Implementation() {
     ::xcb_disconnect(connection_);
 }
 
-bool MainWindow::Implementation::createWindow(const std::string& title, std::uint32_t width, std::uint32_t height) {
+bool MainWindow::Implementation::createWindow(const char* title, std::uint32_t width, std::uint32_t height) {
     // Open the connection to the X server
     connection_ = ::xcb_connect(NULL, NULL);
     if (::xcb_connection_has_error(connection_)) {
@@ -115,7 +116,7 @@ bool MainWindow::Implementation::createWindow(const std::string& title, std::uin
 
     // Set the title of the window
     ::xcb_change_property(connection_, XCB_PROP_MODE_REPLACE, window_, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8,
-                          std::uint32_t(title.size()), title.data());
+                          std::uint32_t(std::strlen(title)), title);
 
     window_initialized_ = true;
     return true;
@@ -340,7 +341,7 @@ rel::WindowDescriptor MainWindow::getWindowDescriptor() const {
     return win_desc;
 }
 
-bool MainWindow::createWindow(const std::string& title, std::uint32_t width, std::uint32_t height) {
+bool MainWindow::createWindow(const char* title, std::uint32_t width, std::uint32_t height) {
     return impl_->createWindow(title, width, height);
 }
 

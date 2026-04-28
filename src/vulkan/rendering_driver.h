@@ -3,6 +3,7 @@
 #include "vulkan_api.h"
 
 #include "interfaces/i_rendering_driver.h"
+#include "rel/hlsl_compiler.h"
 
 #include <vector>
 
@@ -57,6 +58,7 @@ class RenderingDriver final : public util::ref_counter, public IRenderingDriver 
     bool isSuitablePhysicalDevice(std::uint32_t device_index, const uxs::db::value& caps) const override;
     util::ref_ptr<ISurface> createSurface(const WindowDescriptor& win_desc) override;
     util::ref_ptr<IDevice> createDevice(std::uint32_t device_index, const uxs::db::value& caps) override;
+    DataBlob compileShader(const DataBlob& source_text, const uxs::db::value& args, DataBlob& compiler_output) override;
     //@}
 
  private:
@@ -65,6 +67,7 @@ class RenderingDriver final : public util::ref_counter, public IRenderingDriver 
     std::vector<VkExtensionProperties> extensions_;
     std::vector<std::unique_ptr<PhysicalDevice>> physical_devices_;
     std::vector<Surface*> surfaces_;
+    HlslCompiler hlsl_compiler_;
 
     bool loadVulkanLoaderLibrary();
     bool loadExtensionProperties();

@@ -50,7 +50,7 @@ class Device final : public util::ref_counter, public IDevice {
     util::ref_counter& getRefCounter() override { return *this; }
     bool waitDevice() override;
     util::ref_ptr<ISwapChain> createSwapChain(ISurface& surface, const uxs::db::value& opts) override;
-    util::ref_ptr<IShaderModule> createShaderModule(std::span<const std::uint32_t> source) override;
+    util::ref_ptr<IShaderModule> createShaderModule(DataBlob bytecode) override;
     util::ref_ptr<IPipelineLayout> createPipelineLayout(const uxs::db::value& config) override;
     util::ref_ptr<IPipeline> createPipeline(IRenderTarget& render_target, IPipelineLayout& pipeline_layout,
                                             std::span<IShaderModule* const> shader_modules,

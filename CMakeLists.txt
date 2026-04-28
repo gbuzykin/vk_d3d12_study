@@ -81,10 +81,9 @@ endif()
 set(APP3D_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
 include_directories(${APP3D_INCLUDE_DIR})
 include_directories(${PROJECT_BINARY_DIR}/generated)
-include_directories(${CMAKE_SOURCE_DIR}/3rdparty/stb_image)
-include_directories(${CMAKE_SOURCE_DIR}/3rdparty/tiny_obj_loader)
 
 add_subdirectory(src/common)
+add_subdirectory(src/rel)
 add_subdirectory(src/vulkan)
 
 file(GLOB_RECURSE APP3D_SRC_FILES src/app3d/*.h;src/app3d/*.cpp)
@@ -99,7 +98,10 @@ endif()
 
 add_executable(app3d ${APP3D_SRC_FILES} ${APP3D_PLATFORM_SRC_FILES})
 
-target_link_libraries(app3d PRIVATE app3d-common)
+target_include_directories(app3d PRIVATE ${CMAKE_SOURCE_DIR}/3rdparty/stb_image)
+target_include_directories(app3d
+                           PRIVATE ${CMAKE_SOURCE_DIR}/3rdparty/tiny_obj_loader)
+target_link_libraries(app3d PRIVATE app3d-rel)
 
 if(APP3D_USE_PLATFORM STREQUAL "XCB")
   target_link_libraries(app3d PRIVATE xcb)

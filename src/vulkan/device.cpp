@@ -445,9 +445,9 @@ util::ref_ptr<ISwapChain> Device::createSwapChain(ISurface& surface, const uxs::
     return std::move(swap_chain);
 }
 
-util::ref_ptr<IShaderModule> Device::createShaderModule(std::span<const std::uint32_t> source) {
+util::ref_ptr<IShaderModule> Device::createShaderModule(DataBlob bytecode) {
     auto shader_module = util::make_new<ShaderModule>(*this);
-    if (!shader_module->create(source)) { return nullptr; }
+    if (!shader_module->create(bytecode)) { return nullptr; }
     return std::move(shader_module);
 }
 

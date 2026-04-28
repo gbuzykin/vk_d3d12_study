@@ -37,7 +37,7 @@ bool Pipeline::create(std::span<IShaderModule* const> shader_modules, const uxs:
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage = parseShaderStage(module.value("stage").as_string_view()),
             .module = ~static_cast<ShaderModule&>(*shader_modules[index]),
-            .pName = module.value("entry").as_c_string(),
+            .pName = module.value_or<const char*>("entry", "main"),
         });
     }
 

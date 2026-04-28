@@ -146,6 +146,7 @@ class App3DMainWindow final : public MainWindow {
         return true;
     }
 
+    util::ref_ptr<rel::IShaderModule> compileShaderModule(const char* filename, const char* target);
     bool initScene();
     bool renderScene();
 };
@@ -164,7 +165,9 @@ int App3DMainWindow::init(int argc, char** argv) {
 
     if (!(driver_ = entry()->create_func()) || !driver_->init(app_info)) { return -1; }
 
-    if (!createWindow(app_info.value<std::string>("name"), 1280, 1024)) { return -1; }
+    auto name = app_info.value<std::string>("name");
+
+    if (!createWindow(app_info.value_or<const char*>("name", ""), 1280, 1024)) { return -1; }
 
     if (!(surface_ = driver_->createSurface(getWindowDescriptor()))) { return -1; }
 
@@ -200,25 +203,38 @@ int App3DMainWindow::init(int argc, char** argv) {
     return 0;
 }
 
+util::ref_ptr<rel::IShaderModule> App3DMainWindow::compileShaderModule(const char* filename, const char* target) {
+    if (uxs::filebuf ifile(filename, "r"); ifile) {
+        rel::DataBlob shader_text(ifile.seek(0, uxs::seekdir::end));
+        ifile.seek(0);
+        shader_text.truncate(ifile.read(shader_text.getTextBuffer()));
+
+        uxs::db::value args;
+        args["filename"] = filename;
+        args["target"] = target;
+
+        rel::DataBlob compiler_output;
+        auto shader_binary = driver_->compileShader(shader_text, args, compiler_output);
+        if (shader_binary.isEmpty()) {
+            logError("{}", compiler_output.getTextView());
+            return nullptr;
+        }
+
+        if (!compiler_output.isEmpty()) { logWarning("{}", compiler_output.getTextView()); }
+
+        return device_->createShaderModule(std::move(shader_binary));
+    } else {
+        logError("couldn't open '{}' shader file", filename);
+    }
+
+    return nullptr;
+}
+
 bool App3DMainWindow::initScene() {
-    std::vector<std::uint32_t> vertex_shader_spv;
-    if (uxs::bfilebuf ifile("data/shaders/sampler/vert.spv", "r"); ifile) {
-        vertex_shader_spv.resize(ifile.seek(0, uxs::seekdir::end) / sizeof(std::uint32_t));
-        ifile.seek(0);
-        ifile.read(util::as_byte_span(vertex_shader_spv));
-    }
-
-    std::vector<std::uint32_t> pixel_shader_spv;
-    if (uxs::bfilebuf ifile("data/shaders/sampler/pix.spv", "r"); ifile) {
-        pixel_shader_spv.resize(ifile.seek(0, uxs::seekdir::end) / sizeof(std::uint32_t));
-        ifile.seek(0);
-        ifile.read(util::as_byte_span(pixel_shader_spv));
-    }
-
-    vertex_shader_module_ = device_->createShaderModule(vertex_shader_spv);
+    vertex_shader_module_ = compileShaderModule("data/shaders/sampler/vert.hlsl", "vs_6_0");
     if (!vertex_shader_module_) { return false; }
 
-    pixel_shader_module_ = device_->createShaderModule(pixel_shader_spv);
+    pixel_shader_module_ = compileShaderModule("data/shaders/sampler/pix.hlsl", "ps_6_0");
     if (!pixel_shader_module_) { return false; }
 
     const auto pipeline_layout_config = JSON({
