@@ -98,7 +98,7 @@ bool Pipeline::create(std::span<IShaderModule* const> shader_modules, const uxs:
 
     const VkPipelineInputAssemblyStateCreateInfo input_assembly_state_create_info{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        .topology = parsePrimitiveTopology(config.value_or<std::string_view>("primitive_topology", "TRIANGLES")),
         .primitiveRestartEnable = VK_FALSE,
     };
 
@@ -164,11 +164,16 @@ bool Pipeline::create(std::span<IShaderModule* const> shader_modules, const uxs:
         .blendConstants = {1.0f, 1.0f, 1.0f, 1.0f},
     };
 
-    const std::array dynamic_states{
-        VK_DYNAMIC_STATE_VIEWPORT,
-        VK_DYNAMIC_STATE_SCISSOR,
-        VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY,
-    };
+    uxs::inline_dynarray<VkDynamicState> dynamic_states;
+    dynamic_states.push_back(VK_DYNAMIC_STATE_VIEWPORT);
+    dynamic_states.push_back(VK_DYNAMIC_STATE_SCISSOR);
+    if (config.value<bool>("dynamic_primitive_topology")) {
+        dynamic_states.push_back(VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY);
+    }
+    if (config.value<bool>("dynamic_vertex_stride")) {
+        dynamic_states.push_back(VK_DYNAMIC_STATE_VERTEX_INPUT_BINDING_STRIDE);
+    }
+
     const VkPipelineDynamicStateCreateInfo dynamic_state_create_info{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
         .dynamicStateCount = std::uint32_t(dynamic_states.size()),

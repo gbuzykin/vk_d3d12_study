@@ -296,6 +296,8 @@ bool App3DMainWindow::initScene() {
     if (!(pipeline_layout_ = device_->createPipelineLayout(pipeline_layout_config))) { return false; }
 
     const auto pipeline_config = JSON({
+        "dynamic_primitive_topology" : true,
+        "dynamic_vertex_stride" : true,
         "stages" : [
             {"stage" : "VERTEX", "entry" : "main"},  //
             {"stage" : "PIXEL", "entry" : "main"}    //
@@ -386,7 +388,7 @@ bool App3DMainWindow::renderScene() {
 
     render_target_->bindPipeline(*pipeline_);
 
-    render_target_->bindVertexBuffer(*vertex_buffer_, 0, 0);
+    render_target_->bindVertexBuffer(*vertex_buffer_, 0, model_.vertex_stride, 0);
 
     render_target_->bindDescriptorSet(*frame.descriptor_set, 0);
 

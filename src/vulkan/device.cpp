@@ -178,7 +178,7 @@ bool Device::create(const uxs::db::value& caps) {
     if (is_extension_enabled(extension)) { \
         name = (PFN_##name)vkGetDeviceProcAddr(device_, #name); \
         if (!name) { \
-            logError(LOG_VK "couldn't obtain instance-level Vulkan function '{}'", #name); \
+            logError(LOG_VK "couldn't obtain device-level Vulkan function '{}'", #name); \
             return false; \
         } \
     } else { \

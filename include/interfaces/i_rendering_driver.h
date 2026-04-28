@@ -176,7 +176,7 @@ struct IRenderTarget {
     virtual void setViewport(const Rect& rect, float z_near, float z_far) = 0;
     virtual void setScissor(const Rect& rect) = 0;
     virtual void bindPipeline(IPipeline& pipeline) = 0;
-    virtual void bindVertexBuffer(IBuffer& buffer, std::uint32_t offset, std::uint32_t slot) = 0;
+    virtual void bindVertexBuffer(IBuffer& buffer, std::uint32_t slot, std::uint32_t stride, std::uint32_t offset) = 0;
     virtual void bindDescriptorSet(IDescriptorSet& descriptor_set, std::uint32_t set_index) = 0;
     virtual void setPrimitiveTopology(PrimitiveTopology topology) = 0;
     virtual void drawGeometry(std::uint32_t vertex_count, std::uint32_t instance_count, std::uint32_t first_vertex,

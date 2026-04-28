@@ -8,6 +8,7 @@
 
 namespace app3d::rel::vulkan {
 VkShaderStageFlagBits parseShaderStage(std::string_view stage);
+VkPrimitiveTopology parsePrimitiveTopology(std::string_view topology);
 VkFormat parseFormat(std::string_view fmt);
 DescriptorType parseDescriptorType(std::string_view type);
 std::pair<std::uint32_t, std::uint32_t> getFormatSizeAlignment(VkFormat fmt);

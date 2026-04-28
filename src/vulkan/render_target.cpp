@@ -332,10 +332,16 @@ void RenderTarget::bindPipeline(IPipeline& pipeline) {
     kit.command_buffer.bindPipelineObject(VK_PIPELINE_BIND_POINT_GRAPHICS, ~*current_pipeline_);
 }
 
-void RenderTarget::bindVertexBuffer(IBuffer& buffer, std::uint32_t offset, std::uint32_t slot) {
+void RenderTarget::bindVertexBuffer(IBuffer& buffer, std::uint32_t slot, std::uint32_t stride, std::uint32_t offset) {
     auto& kit = frame_render_kits_[n_frame_];
-    kit.command_buffer.bindVertexBuffers(slot,
-                                         {std::array{~static_cast<Buffer&>(buffer)}, std::array{VkDeviceSize(offset)}});
+    if (stride != 0) {
+        kit.command_buffer.bindVertexBuffers2(
+            slot, {std::array{~static_cast<Buffer&>(buffer)}, std::array{VkDeviceSize(offset)},
+                   std::array{static_cast<Buffer&>(buffer).getSize() - offset}, std::array{VkDeviceSize(stride)}});
+    } else {
+        kit.command_buffer.bindVertexBuffers(
+            slot, {std::array{~static_cast<Buffer&>(buffer)}, std::array{VkDeviceSize(offset)}});
+    }
 }
 
 void RenderTarget::bindDescriptorSet(IDescriptorSet& descriptor_set, std::uint32_t set_index) {
