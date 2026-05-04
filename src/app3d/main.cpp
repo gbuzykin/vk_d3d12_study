@@ -378,15 +378,13 @@ void App3DMainWindow::updateMatrices(CB0& cb0) {
 bool App3DMainWindow::renderScene() {
     auto& frame = frame_data_[n_frame_];
 
-    const auto result = render_target_->beginRenderTarget({0.1f, 0.2f, 0.3f, 1.0f}, 1.0f, 0);
+    const auto result = render_target_->beginRenderTarget({0.1f, 0.2f, 0.3f, 1.0f}, 1.0f, 0, *pipeline_);
     if (result == rel::RenderTargetResult::SUBOPTIMAL || result == rel::RenderTargetResult::OUT_OF_DATE) {
         if (!recreateSwapChain()) { return false; }
         if (result == rel::RenderTargetResult::OUT_OF_DATE) { return true; }
     } else if (result != rel::RenderTargetResult::SUCCESS) {
         return false;
     }
-
-    render_target_->bindPipeline(*pipeline_);
 
     render_target_->bindVertexBuffer(*vertex_buffer_, 0, model_.vertex_stride, 0);
 

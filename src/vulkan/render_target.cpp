@@ -240,7 +240,8 @@ void RenderTarget::destroyFrameResources() {
 
 //@{ IRenderTarget
 
-RenderTargetResult RenderTarget::beginRenderTarget(const Color4f& clear_color, float depth, std::uint32_t stencil) {
+RenderTargetResult RenderTarget::beginRenderTarget(const Color4f& clear_color, float depth, std::uint32_t stencil,
+                                                   IPipeline& pipeline) {
     if (render_target_status_ > RenderTargetResult::SUBOPTIMAL) { return render_target_status_; }
 
     auto& kit = frame_render_kits_[n_frame_];
@@ -249,21 +250,22 @@ RenderTargetResult RenderTarget::beginRenderTarget(const Color4f& clear_color, f
         return RenderTargetResult::FAILED;
     }
 
-    std::uint32_t image_index = 0;
-    render_target_status_ = frame_image_provider_->acquireFrameImage(n_frame_, ACQUIRE_FRAME_IMAGE_TIMEOUT, image_index);
+    current_image_index_ = 0;
+    render_target_status_ = frame_image_provider_->acquireFrameImage(n_frame_, ACQUIRE_FRAME_IMAGE_TIMEOUT,
+                                                                     current_image_index_);
     if (render_target_status_ > RenderTargetResult::SUBOPTIMAL) { return render_target_status_; }
 
     if (!kit.command_buffer.beginCommandBuffer(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) {
         return RenderTargetResult::FAILED;
     }
 
-    frame_image_provider_->imageBarrierBefore(kit.command_buffer, image_index);
+    frame_image_provider_->imageBarrierBefore(kit.command_buffer, current_image_index_);
 
     uxs::inline_dynarray<VkClearValue, 2> clear_values;
     uxs::inline_dynarray<VkImageView, 2> attachments;
 
     clear_values.emplace_back(VkClearValue{.color = {{clear_color.r, clear_color.g, clear_color.b, clear_color.a}}});
-    attachments.push_back(frame_image_provider_->getImageView(image_index));
+    attachments.push_back(frame_image_provider_->getImageView(current_image_index_));
     if (use_depth_) {
         clear_values.emplace_back(VkClearValue{.depthStencil = {depth, stencil}});
         attachments.push_back(kit.depth_stencil_image_view);
@@ -283,24 +285,24 @@ RenderTargetResult RenderTarget::beginRenderTarget(const Color4f& clear_color, f
 
     kit.command_buffer.setScissors(0, std::array{VkRect2D{.offset = {.x = 0, .y = 0}, .extent = image_extent_}});
 
-    current_pipeline_ = nullptr;
-    current_image_index_ = image_index;
+    current_pipeline_ = &static_cast<Pipeline&>(pipeline);
+    kit.command_buffer.bindPipelineObject(VK_PIPELINE_BIND_POINT_GRAPHICS, ~*current_pipeline_);
+
     return render_target_status_;
 }
 
 bool RenderTarget::endRenderTarget() {
     auto& kit = frame_render_kits_[n_frame_];
-    const std::uint32_t image_index = current_image_index_;
 
     kit.command_buffer.endRenderPass();
 
-    frame_image_provider_->imageBarrierAfter(kit.command_buffer, image_index);
+    frame_image_provider_->imageBarrierAfter(kit.command_buffer, current_image_index_);
 
     if (!kit.command_buffer.endCommandBuffer()) { return false; }
 
     if (!device_->resetFences(std::array{kit.fence})) { return false; }
 
-    render_target_status_ = frame_image_provider_->submitFrameImage(n_frame_, image_index, kit.command_buffer,
+    render_target_status_ = frame_image_provider_->submitFrameImage(n_frame_, current_image_index_, kit.command_buffer,
                                                                     kit.fence);
 
     if (++n_frame_ == frame_render_kits_.size()) { n_frame_ = 0; }

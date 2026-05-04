@@ -30,7 +30,8 @@ class RenderTarget final : public util::ref_counter, public IRenderTarget {
     Extent2u getImageExtent() const override { return {.width = image_extent_.width, .height = image_extent_.height}; }
     std::uint32_t getFifCount() const override { return std::uint32_t(frame_render_kits_.size()); }
     bool isInvertedNdcY() const override { return true; }
-    RenderTargetResult beginRenderTarget(const Color4f& clear_color, float depth, std::uint32_t stencil) override;
+    RenderTargetResult beginRenderTarget(const Color4f& clear_color, float depth, std::uint32_t stencil,
+                                         IPipeline& pipeline) override;
     bool endRenderTarget() override;
     void setViewport(const Rect& rect, float z_near, float z_far) override;
     void setScissor(const Rect& rect) override;
