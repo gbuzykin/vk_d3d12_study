@@ -17,7 +17,7 @@ class Pipeline final : public util::ref_counter, public IPipeline {
 
     bool create(std::span<IShaderModule* const> shader_modules, const uxs::db::value& config);
 
-    VkPipeline operator~() { return pipeline_; }
+    VkPipeline getHandle() { return pipeline_; }
     PipelineLayout& getLayout() { return *pipeline_layout_; }
 
     //@{ IPipeline

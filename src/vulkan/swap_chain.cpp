@@ -1,7 +1,6 @@
 #include "swap_chain.h"
 
 #include "device.h"
-#include "object_destroyer.h"
 #include "render_target.h"
 #include "surface.h"
 #include "vulkan_logger.h"
@@ -21,13 +20,13 @@ SwapChain::SwapChain(Device& device, Surface& surface)
 
 SwapChain::~SwapChain() {
     for (auto& kit : submit_kits_) {
-        ObjectDestroyer<VkSemaphore>::destroy(~*device_, kit.sem_image_acquired);
-        ObjectDestroyer<VkSemaphore>::destroy(~*device_, kit.sem_rendering_complete);
-        ObjectDestroyer<VkSemaphore>::destroy(~*device_, kit.sem_ready_to_present);
-        surface_->getPresentQueue().releaseCommandBuffer(~kit.present_command_buffer);
+        device_->vkDestroySemaphore(kit.sem_image_acquired, nullptr);
+        device_->vkDestroySemaphore(kit.sem_rendering_complete, nullptr);
+        device_->vkDestroySemaphore(kit.sem_ready_to_present, nullptr);
+        surface_->getPresentQueue().releaseCommandBuffer(kit.present_command_buffer);
     }
     destroyImageViews();
-    ObjectDestroyer<VkSwapchainKHR>::destroy(~*device_, swap_chain_);
+    device_->vkDestroySwapchainKHR(swap_chain_, nullptr);
 }
 
 std::uint32_t SwapChain::chooseImageCount(const VkSurfaceCapabilitiesKHR& capabilities, const uxs::db::value& opts) {
@@ -110,9 +109,7 @@ bool SwapChain::create(const uxs::db::value& opts) {
         if (!device_->createSemaphore(kit.sem_rendering_complete)) { return false; }
         if (surface_->getPresentQueue().getFamilyIndex() != device_->getGraphicsQueue().getFamilyIndex()) {
             if (!device_->createSemaphore(kit.sem_ready_to_present)) { return false; }
-            VkCommandBuffer command_buffer = VK_NULL_HANDLE;
-            if (!surface_->getPresentQueue().obtainCommandBuffer(command_buffer)) { return false; }
-            kit.present_command_buffer = CommandBuffer::wrap(command_buffer);
+            if (!surface_->getPresentQueue().obtainCommandBuffer(kit.present_command_buffer)) { return false; }
         }
     }
 
@@ -153,8 +150,8 @@ void SwapChain::imageBarrierAfter(CommandBuffer& command_buffer, std::uint32_t i
 RenderTargetResult SwapChain::acquireFrameImage(std::uint32_t n_frame, std::uint64_t timeout,
                                                 std::uint32_t& image_index) {
     auto& kit = submit_kits_[n_frame];
-    VkResult result = vkAcquireNextImageKHR(~*device_, swap_chain_, timeout, kit.sem_image_acquired, VK_NULL_HANDLE,
-                                            &image_index);
+    VkResult result = device_->vkAcquireNextImageKHR(swap_chain_, timeout, kit.sem_image_acquired, VK_NULL_HANDLE,
+                                                     &image_index);
     if (result == VK_SUCCESS) { return RenderTargetResult::SUCCESS; }
     if (result == VK_SUBOPTIMAL_KHR) { return RenderTargetResult::SUBOPTIMAL; }
     if (result == VK_ERROR_OUT_OF_DATE_KHR) { return RenderTargetResult::OUT_OF_DATE; }
@@ -171,7 +168,7 @@ RenderTargetResult SwapChain::submitFrameImage(std::uint32_t n_frame, std::uint3
     if (!device_->getGraphicsQueue().submitCommandBuffers(
             {std::array{kit.sem_image_acquired},
              std::array{VkPipelineStageFlags(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)}},
-            std::array{~command_buffer}, std::array{kit.sem_rendering_complete},
+            std::array{command_buffer.getHandle()}, std::array{kit.sem_rendering_complete},
             queue_family_transition ? VK_NULL_HANDLE : fence)) {
         return RenderTargetResult::FAILED;
     }
@@ -205,7 +202,7 @@ RenderTargetResult SwapChain::submitFrameImage(std::uint32_t n_frame, std::uint3
         if (!surface_->getPresentQueue().submitCommandBuffers(
                 {std::array{kit.sem_rendering_complete},
                  std::array{VkPipelineStageFlags(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT)}},
-                std::array{~present_command_buffer}, std::array{kit.sem_ready_to_present}, fence)) {
+                std::array{present_command_buffer.getHandle()}, std::array{kit.sem_ready_to_present}, fence)) {
             return RenderTargetResult::FAILED;
         }
 
@@ -254,7 +251,7 @@ bool SwapChain::recreateSwapChainResources(const uxs::db::value& opts) {
 
     const VkSwapchainCreateInfoKHR create_info{
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-        .surface = ~*surface_,
+        .surface = surface_->getHandle(),
         .minImageCount = image_count,
         .imageFormat = surface_->getImageFormat().format,
         .imageColorSpace = surface_->getImageFormat().colorSpace,
@@ -270,13 +267,13 @@ bool SwapChain::recreateSwapChainResources(const uxs::db::value& opts) {
     };
 
     const VkSwapchainKHR old_swap_chain = swap_chain_;
-    VkResult result = vkCreateSwapchainKHR(~*device_, &create_info, nullptr, &swap_chain_);
+    VkResult result = device_->vkCreateSwapchainKHR(&create_info, nullptr, &swap_chain_);
     if (result != VK_SUCCESS || swap_chain_ == VK_NULL_HANDLE) {
         logError(LOG_VK "couldn't create swap chain: {}", result);
         return false;
     }
 
-    ObjectDestroyer<VkSwapchainKHR>::destroy(~*device_, old_swap_chain);
+    device_->vkDestroySwapchainKHR(old_swap_chain, nullptr);
 
     if (!loadImageHandles()) { return false; }
     if (!createImageViews()) { return false; }
@@ -287,14 +284,14 @@ bool SwapChain::recreateSwapChainResources(const uxs::db::value& opts) {
 
 bool SwapChain::loadImageHandles() {
     std::uint32_t image_count = 0;
-    VkResult result = vkGetSwapchainImagesKHR(~*device_, swap_chain_, &image_count, nullptr);
+    VkResult result = device_->vkGetSwapchainImagesKHR(swap_chain_, &image_count, nullptr);
     if (result != VK_SUCCESS || image_count == 0) {
         logError(LOG_VK "couldn't get the number of swap chain images: {}", result);
         return false;
     }
 
     images_.resize(image_count, VK_NULL_HANDLE);
-    result = vkGetSwapchainImagesKHR(~*device_, swap_chain_, &image_count, images_.data());
+    result = device_->vkGetSwapchainImagesKHR(swap_chain_, &image_count, images_.data());
     if (result != VK_SUCCESS || image_count == 0) {
         logError(LOG_VK "couldn't enumerate swap_chain images: {}", result);
         return false;
@@ -322,7 +319,7 @@ bool SwapChain::createImageViews() {
                 },
         };
 
-        VkResult result = vkCreateImageView(~*device_, &create_info, nullptr, &image_views_[n]);
+        VkResult result = device_->vkCreateImageView(&create_info, nullptr, &image_views_[n]);
         if (result != VK_SUCCESS) {
             logError(LOG_VK "couldn't create image view for swap chain image: {}", result);
             return false;
@@ -333,6 +330,6 @@ bool SwapChain::createImageViews() {
 }
 
 void SwapChain::destroyImageViews() {
-    for (const auto& view : image_views_) { ObjectDestroyer<VkImageView>::destroy(~*device_, view); }
+    for (const auto& view : image_views_) { device_->vkDestroyImageView(view, nullptr); }
     image_views_.clear();
 }

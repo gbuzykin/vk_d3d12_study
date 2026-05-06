@@ -1,7 +1,6 @@
 #include "pipeline.h"
 
 #include "device.h"
-#include "object_destroyer.h"
 #include "pipeline_layout.h"
 #include "render_target.h"
 #include "shader_module.h"
@@ -19,7 +18,7 @@ Pipeline::Pipeline(Device& device, RenderTarget& render_target, PipelineLayout& 
     : device_(util::not_null{&device}), render_target_(util::not_null{&render_target}),
       pipeline_layout_(util::not_null{&pipeline_layout}) {}
 
-Pipeline::~Pipeline() { ObjectDestroyer<VkPipeline>::destroy(~*device_, pipeline_); }
+Pipeline::~Pipeline() { device_->vkDestroyPipeline(pipeline_, nullptr); }
 
 bool Pipeline::create(std::span<IShaderModule* const> shader_modules, const uxs::db::value& config) {
     // Shader stages :
@@ -36,7 +35,7 @@ bool Pipeline::create(std::span<IShaderModule* const> shader_modules, const uxs:
         shader_stage_create_infos.emplace_back(VkPipelineShaderStageCreateInfo{
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage = parseShaderStage(module.value("stage").as_string_view()),
-            .module = ~static_cast<ShaderModule&>(*shader_modules[index]),
+            .module = static_cast<ShaderModule&>(*shader_modules[index]).getHandle(),
             .pName = module.value_or<const char*>("entry", "main"),
         });
     }
@@ -192,13 +191,13 @@ bool Pipeline::create(std::span<IShaderModule* const> shader_modules, const uxs:
         .pDepthStencilState = render_target_->useDepth() ? &depth_stencil_state_create_info : nullptr,
         .pColorBlendState = &blend_state_create_info,
         .pDynamicState = &dynamic_state_create_info,
-        .layout = ~*pipeline_layout_,
+        .layout = pipeline_layout_->getHandle(),
         .renderPass = render_target_->getRenderPass(),
         .basePipelineIndex = -1,
     };
 
-    VkResult result = vkCreateGraphicsPipelines(~*device_, VK_NULL_HANDLE, 1, &graphics_pipeline_create_info, nullptr,
-                                                &pipeline_);
+    VkResult result = device_->vkCreateGraphicsPipelines(VK_NULL_HANDLE, 1, &graphics_pipeline_create_info, nullptr,
+                                                         &pipeline_);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create graphics pipeline: {}", result);
         return false;

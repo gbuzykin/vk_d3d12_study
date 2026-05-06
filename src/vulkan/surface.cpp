@@ -1,12 +1,9 @@
 #include "surface.h"
 
 #include "device.h"
-#include "object_destroyer.h"
 #include "rendering_driver.h"
 #include "swap_chain.h"
 #include "vulkan_logger.h"
-
-#include "common/core_defs.h"
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -19,7 +16,7 @@ Surface::Surface(RenderingDriver& instance) : instance_(util::not_null{&instance
 
 Surface::~Surface() {
     instance_->removeSurface(this);
-    ObjectDestroyer<VkSurfaceKHR>::destroy(~*instance_, surface_);
+    instance_->vkDestroySurfaceKHR(surface_, nullptr);
 }
 
 std::uint32_t Surface::getPresentQueueFamily(std::uint32_t n) const {
@@ -45,7 +42,7 @@ bool Surface::create(const WindowDescriptor& win_desc) {
                 .hinstance = win_desc_impl.hinstance,
                 .hwnd = win_desc_impl.hwnd,
             };
-            result = vkCreateWin32SurfaceKHR(~*instance_, &create_info, nullptr, &surface_);
+            result = instance_->vkCreateWin32SurfaceKHR(&create_info, nullptr, &surface_);
         } break;
 #endif
 #ifdef VK_USE_PLATFORM_XLIB_KHR
@@ -63,7 +60,7 @@ bool Surface::create(const WindowDescriptor& win_desc) {
                 .dpy = win_desc_impl.dpy,
                 .window = win_desc_impl.window,
             };
-            result = vkCreateXlibSurfaceKHR(~*instance_, &create_info, nullptr, &surface_);
+            result = instance_->vkCreateXlibSurfaceKHR(&create_info, nullptr, &surface_);
         } break;
 #endif
 #ifdef VK_USE_PLATFORM_XCB_KHR
@@ -81,7 +78,7 @@ bool Surface::create(const WindowDescriptor& win_desc) {
                 .connection = win_desc_impl.connection,
                 .window = win_desc_impl.window,
             };
-            result = vkCreateXcbSurfaceKHR(~*instance_, &create_info, nullptr, &surface_);
+            result = instance_->vkCreateXcbSurfaceKHR(&create_info, nullptr, &surface_);
         } break;
 #endif
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
@@ -99,7 +96,7 @@ bool Surface::create(const WindowDescriptor& win_desc) {
                 .display = win_desc_impl.display,
                 .surface = win_desc_impl.surface,
             };
-            result = vkCreateWaylandSurfaceKHR(~*instance_, &create_info, nullptr, &surface_);
+            result = instance_->vkCreateWaylandSurfaceKHR(&create_info, nullptr, &surface_);
         } break;
 #endif
         default: {
@@ -117,7 +114,7 @@ bool Surface::create(const WindowDescriptor& win_desc) {
 }
 
 bool Surface::loadCapabilities(PhysicalDevice& physical_device) {
-    VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(~physical_device, surface_, &capabilities_);
+    VkResult result = physical_device.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(surface_, &capabilities_);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't get surface capabilities: {}", result);
         return false;
@@ -128,14 +125,14 @@ bool Surface::loadCapabilities(PhysicalDevice& physical_device) {
 
 bool Surface::loadFormats(PhysicalDevice& physical_device) {
     std::uint32_t formats_count = 0;
-    VkResult result = vkGetPhysicalDeviceSurfaceFormatsKHR(~physical_device, surface_, &formats_count, nullptr);
+    VkResult result = physical_device.vkGetPhysicalDeviceSurfaceFormatsKHR(surface_, &formats_count, nullptr);
     if (result != VK_SUCCESS || formats_count == 0) {
         logError(LOG_VK "couldn't get the number of supported surface formats: {}", result);
         return false;
     }
 
     formats_.resize(formats_count);
-    result = vkGetPhysicalDeviceSurfaceFormatsKHR(~physical_device, surface_, &formats_count, formats_.data());
+    result = physical_device.vkGetPhysicalDeviceSurfaceFormatsKHR(surface_, &formats_count, formats_.data());
     if (result != VK_SUCCESS || formats_count == 0) {
         logError(LOG_VK "couldn't enumerate supported surface formats: {}", result);
         return false;
@@ -151,7 +148,7 @@ bool Surface::loadPresentQueueFamilies(PhysicalDevice& physical_device) {
 
     for (std::uint32_t index = 0; index < std::uint32_t(queue_families.size()); ++index) {
         VkBool32 is_supported = VK_FALSE;
-        VkResult result = vkGetPhysicalDeviceSurfaceSupportKHR(~physical_device, index, surface_, &is_supported);
+        VkResult result = physical_device.vkGetPhysicalDeviceSurfaceSupportKHR(index, surface_, &is_supported);
         if (result == VK_SUCCESS && is_supported == VK_TRUE) { present_queue_families_.push_back(index); }
     }
 
@@ -165,16 +162,15 @@ bool Surface::loadPresentQueueFamilies(PhysicalDevice& physical_device) {
 
 bool Surface::loadPresentModes(PhysicalDevice& physical_device) {
     std::uint32_t present_mode_count = 0;
-    VkResult result = vkGetPhysicalDeviceSurfacePresentModesKHR(~physical_device, surface_, &present_mode_count,
-                                                                nullptr);
+    VkResult result = physical_device.vkGetPhysicalDeviceSurfacePresentModesKHR(surface_, &present_mode_count, nullptr);
     if (result != VK_SUCCESS || present_mode_count == 0) {
         logError(LOG_VK "couldn't get the number of supported present modes: {}", result);
         return false;
     }
 
     present_modes_.resize(present_mode_count);
-    result = vkGetPhysicalDeviceSurfacePresentModesKHR(~physical_device, surface_, &present_mode_count,
-                                                       present_modes_.data());
+    result = physical_device.vkGetPhysicalDeviceSurfacePresentModesKHR(surface_, &present_mode_count,
+                                                                       present_modes_.data());
     if (result != VK_SUCCESS || present_mode_count == 0) {
         logError(LOG_VK "couldn't enumerate present modes: {}", result);
         return false;

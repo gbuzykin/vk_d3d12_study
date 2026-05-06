@@ -22,7 +22,7 @@ void DescriptorSet::updateCombinedTextureSamplerDescriptor(ITexture& texture, IS
     const auto& binding = handle_.bindings[slot][unsigned(BindingType::SHADER_RESOURCE)];
     const std::array image_infos{
         VkDescriptorImageInfo{
-            .sampler = ~static_cast<Sampler&>(sampler),
+            .sampler = static_cast<Sampler&>(sampler).getHandle(),
             .imageView = static_cast<Texture&>(texture).getImageView(0),
             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         },
@@ -46,7 +46,7 @@ void DescriptorSet::updateConstantBufferDescriptor(IBuffer& buffer, std::uint32_
     const auto& binding = handle_.bindings[slot][unsigned(BindingType::CONSTANT_BUFFER)];
     const std::array buffer_infos{
         VkDescriptorBufferInfo{
-            .buffer = ~static_cast<Buffer&>(buffer),
+            .buffer = static_cast<Buffer&>(buffer).getHandle(),
             .offset = 0,
             .range = VK_WHOLE_SIZE,
         },

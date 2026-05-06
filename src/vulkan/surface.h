@@ -25,7 +25,7 @@ class Surface final : public util::ref_counter, public ISurface {
     bool loadPresentModes(PhysicalDevice& physical_device);
     bool checkAndSelectSurfaceFeatures();
 
-    VkSurfaceKHR operator~() { return surface_; }
+    VkSurfaceKHR getHandle() { return surface_; }
     DevQueue& getPresentQueue() { return present_queue_; }
 
     //@{ ISurface

@@ -13,8 +13,6 @@ class Texture final : public FrameImageProvider, public ITexture {
 
     bool create(const TextureDesc& desc);
 
-    VkImage operator~() { return image_; }
-
     //@{ FrameImageProvider
     VkImageView getImageView(std::uint32_t image_index) override { return image_view_; }
     std::uint32_t getImageCount() const override { return 1; }

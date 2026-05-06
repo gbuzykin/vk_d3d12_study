@@ -17,7 +17,7 @@ class DescriptorSet final : public util::ref_counter, public IDescriptorSet {
         return pipeline_layout_->obtainDescriptorSet(set_layout_index, handle_);
     }
 
-    VkDescriptorSet operator~() { return handle_.handle; }
+    VkDescriptorSet getHandle() { return handle_.handle; }
     PipelineLayout& getLayout() { return *pipeline_layout_; }
 
     //@{ IDescriptorSet

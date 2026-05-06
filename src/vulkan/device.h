@@ -16,6 +16,22 @@ class Device final : public util::ref_counter, public IDevice {
     Device(RenderingDriver& instance, PhysicalDevice& physical_device);
     ~Device() override;
 
+#define DEVICE_LEVEL_VK_FUNCTION(name) \
+    template<typename... Args> \
+    auto name(Args&&... args) { \
+        return vk_funcs_.name(device_, std::forward<Args>(args)...); \
+    }
+
+#define DEVICE_LEVEL_VK_FUNCTION_FROM_EXTENSION(name, extension) \
+    template<typename... Args> \
+    auto name(Args&&... args) { \
+        return vk_funcs_.name(device_, std::forward<Args>(args)...); \
+    }
+
+#include "vulkan_function_list.inl"
+
+    const DeviceVkFuncTable& getVkFuncs() { return vk_funcs_; }
+
     bool create(const uxs::db::value& caps);
     bool createSemaphore(VkSemaphore& semaphore);
     bool createFence(bool signaled, VkFence& fence);
@@ -35,11 +51,10 @@ class Device final : public util::ref_counter, public IDevice {
 
     void updateDescriptorSets(std::span<const VkWriteDescriptorSet> write_descriptors,
                               std::span<const VkCopyDescriptorSet> copy_descriptors) {
-        vkUpdateDescriptorSets(device_, std::uint32_t(write_descriptors.size()), write_descriptors.data(),
+        vkUpdateDescriptorSets(std::uint32_t(write_descriptors.size()), write_descriptors.data(),
                                std::uint32_t(copy_descriptors.size()), copy_descriptors.data());
     }
 
-    VkDevice operator~() { return device_; }
     PhysicalDevice& getPhysicalDevice() { return physical_device_; }
     VmaAllocator getAllocator() { return allocator_; }
     DevQueue& getGraphicsQueue() { return graphics_queue_; }
@@ -62,6 +77,7 @@ class Device final : public util::ref_counter, public IDevice {
  private:
     util::ref_ptr<RenderingDriver> instance_;
     PhysicalDevice& physical_device_;
+    DeviceVkFuncTable vk_funcs_;
     VkDevice device_{VK_NULL_HANDLE};
     VmaAllocator allocator_{VK_NULL_HANDLE};
     DevQueue graphics_queue_;

@@ -23,8 +23,6 @@ class SwapChain final : public FrameImageProvider, public ISwapChain {
 
     bool create(const uxs::db::value& opts);
 
-    VkSwapchainKHR operator~() { return swap_chain_; }
-
     //@{ FrameImageProvider
     VkImageView getImageView(std::uint32_t image_index) override { return image_views_[image_index]; }
     std::uint32_t getImageCount() const override { return std::uint32_t(images_.size()); }

@@ -69,6 +69,7 @@ void* app3d::loadDynamicLibrary(const std::filesystem::path& library_dir, std::s
 }
 
 void app3d::freeDynamicLibrary(void* library) {
+    if (!library) { return; }
 #if defined(WIN32)
     ::FreeLibrary(static_cast<HMODULE>(library));
 #elif defined(__linux__)

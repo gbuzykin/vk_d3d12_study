@@ -17,7 +17,7 @@ bool CommandBuffer::beginCommandBuffer(VkCommandBufferUsageFlags usage,
         .pInheritanceInfo = secondary_command_buffer_info,
     };
 
-    VkResult result = vkBeginCommandBuffer(command_buffer_, &begin_info);
+    VkResult result = vkBeginCommandBuffer(&begin_info);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't begin command buffer recording operation: {}", result);
         return false;
@@ -27,7 +27,7 @@ bool CommandBuffer::beginCommandBuffer(VkCommandBufferUsageFlags usage,
 }
 
 bool CommandBuffer::endCommandBuffer() {
-    VkResult result = vkEndCommandBuffer(command_buffer_);
+    VkResult result = vkEndCommandBuffer();
     if (result != VK_SUCCESS) {
         logError(LOG_VK "error occurred during command buffer recording: {}", result);
         return false;
@@ -54,5 +54,5 @@ void CommandBuffer::beginRenderPass(VkRenderPass render_pass, VkFramebuffer fram
         .pClearValues = clear_values.data(),
     };
 
-    vkCmdBeginRenderPass(command_buffer_, &render_pass_begin_info, subpass_contents);
+    vkCmdBeginRenderPass(&render_pass_begin_info, subpass_contents);
 }

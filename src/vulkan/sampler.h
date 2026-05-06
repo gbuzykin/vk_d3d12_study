@@ -15,7 +15,7 @@ class Sampler final : public util::ref_counter, public ISampler {
 
     bool create(const SamplerDesc& desc);
 
-    VkSampler operator~() { return sampler_; }
+    VkSampler getHandle() { return sampler_; }
 
     //@{ ISampler
     util::ref_counter& getRefCounter() override { return *this; }

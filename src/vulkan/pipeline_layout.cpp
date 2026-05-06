@@ -2,7 +2,6 @@
 
 #include "descriptor_set.h"
 #include "device.h"
-#include "object_destroyer.h"
 #include "pipeline.h"
 #include "render_target.h"
 #include "shader_module.h"
@@ -19,11 +18,9 @@ using namespace app3d::rel::vulkan;
 PipelineLayout::PipelineLayout(Device& device) : device_(util::not_null(&device)) {}
 
 PipelineLayout::~PipelineLayout() {
-    ObjectDestroyer<VkDescriptorPool>::destroy(~*device_, desc_pool_);
-    ObjectDestroyer<VkPipelineLayout>::destroy(~*device_, pipeline_layout_);
-    for (const auto& set_layout : set_layouts_) {
-        ObjectDestroyer<VkDescriptorSetLayout>::destroy(~*device_, set_layout);
-    }
+    device_->vkDestroyDescriptorPool(desc_pool_, nullptr);
+    device_->vkDestroyPipelineLayout(pipeline_layout_, nullptr);
+    for (const auto& set_layout : set_layouts_) { device_->vkDestroyDescriptorSetLayout(set_layout, nullptr); }
 }
 
 bool PipelineLayout::create(const uxs::db::value& config) {
@@ -88,7 +85,7 @@ bool PipelineLayout::create(const uxs::db::value& config) {
         };
 
         VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
-        VkResult result = vkCreateDescriptorSetLayout(~*device_, &create_info, nullptr, &set_layout);
+        VkResult result = device_->vkCreateDescriptorSetLayout(&create_info, nullptr, &set_layout);
         if (result != VK_SUCCESS) {
             logError(LOG_VK "couldn't create layout for descriptor sets: {}", result);
             return false;
@@ -104,7 +101,7 @@ bool PipelineLayout::create(const uxs::db::value& config) {
         .pSetLayouts = set_layouts_.data(),
     };
 
-    VkResult result = vkCreatePipelineLayout(~*device_, &create_info, nullptr, &pipeline_layout_);
+    VkResult result = device_->vkCreatePipelineLayout(&create_info, nullptr, &pipeline_layout_);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create pipeline layout: {}", result);
         return false;
@@ -121,7 +118,7 @@ bool PipelineLayout::obtainDescriptorSet(std::uint32_t set_layout_index, Descrip
         .pSetLayouts = &set_layouts_[set_layout_index],
     };
 
-    VkResult result = vkAllocateDescriptorSets(~*device_, &allocate_info, &handle.handle);
+    VkResult result = device_->vkAllocateDescriptorSets(&allocate_info, &handle.handle);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't allocate descriptor sets: {}", result);
         return false;
@@ -139,7 +136,7 @@ util::ref_ptr<IDescriptorSet> PipelineLayout::createDescriptorSet(std::uint32_t 
     return std::move(descriptor_set);
 }
 
-void PipelineLayout::resetDescriptorAllocator() { vkResetDescriptorPool(~*device_, desc_pool_, 0); }
+void PipelineLayout::resetDescriptorAllocator() { device_->vkResetDescriptorPool(desc_pool_, 0); }
 
 //@}
 
@@ -153,7 +150,7 @@ bool PipelineLayout::createDescriptorPool(std::uint32_t total_max_sets,
         .pPoolSizes = desc_counts.data(),
     };
 
-    VkResult result = vkCreateDescriptorPool(~*device_, &create_info, nullptr, &desc_pool_);
+    VkResult result = device_->vkCreateDescriptorPool(&create_info, nullptr, &desc_pool_);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create descriptor pool: {}", result);
         return false;

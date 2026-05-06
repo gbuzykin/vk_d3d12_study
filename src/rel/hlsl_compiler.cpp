@@ -51,7 +51,7 @@ HlslCompiler::Implementation::~Implementation() {
     include_handler_.reset();
     dxc_compiler_.reset();
     dxc_utils_.reset();
-    if (dxcompiler_library_) { freeDynamicLibrary(dxcompiler_library_); }
+    freeDynamicLibrary(dxcompiler_library_);
 }
 
 bool HlslCompiler::Implementation::init() {

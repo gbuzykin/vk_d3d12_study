@@ -17,7 +17,7 @@ class Buffer : public util::ref_counter, public IBuffer {
 
     bool create(BufferType type, VkDeviceSize size);
 
-    VkBuffer operator~() { return buffer_; }
+    VkBuffer getHandle() { return buffer_; }
 
     //@{ IBuffer
     util::ref_counter& getRefCounter() override { return *this; }

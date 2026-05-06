@@ -1,7 +1,6 @@
 #include "sampler.h"
 
 #include "device.h"
-#include "object_destroyer.h"
 #include "vulkan_logger.h"
 
 #include <array>
@@ -15,7 +14,7 @@ using namespace app3d::rel::vulkan;
 
 Sampler::Sampler(Device& device) : device_(util::not_null{&device}) {}
 
-Sampler::~Sampler() { ObjectDestroyer<VkSampler>::destroy(~*device_, sampler_); }
+Sampler::~Sampler() { device_->vkDestroySampler(sampler_, nullptr); }
 
 bool Sampler::create(const SamplerDesc& desc) {
     constexpr std::array mag_filters{
@@ -57,7 +56,7 @@ bool Sampler::create(const SamplerDesc& desc) {
         .unnormalizedCoordinates = VK_FALSE,
     };
 
-    VkResult result = vkCreateSampler(~*device_, &create_info, nullptr, &sampler_);
+    VkResult result = device_->vkCreateSampler(&create_info, nullptr, &sampler_);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create sampler: {}", result);
         return false;
