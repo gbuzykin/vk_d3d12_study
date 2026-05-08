@@ -85,6 +85,9 @@ include_directories(${PROJECT_BINARY_DIR}/generated)
 add_subdirectory(src/common)
 add_subdirectory(src/rel)
 add_subdirectory(src/vulkan)
+if(WIN32)
+  add_subdirectory(src/d3d12)
+endif()
 
 file(GLOB_RECURSE APP3D_SRC_FILES src/app3d/*.h;src/app3d/*.cpp)
 
