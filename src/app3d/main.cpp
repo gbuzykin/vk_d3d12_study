@@ -53,6 +53,11 @@ class Timer {
     double delta_ = 0.f;
 };
 
+template<typename Ty, std::size_t alignment = 256>
+struct Padded : public Ty {
+    std::uint8_t padding[((sizeof(Ty) + alignment - 1) & ~(alignment - 1)) - sizeof(Ty)];
+};
+
 struct CB0 {
     rel::Mat4f mvp;
     rel::Mat3f mv;
@@ -171,7 +176,7 @@ class App3DMainWindow final : public MainWindow {
     struct FrameData {
         util::ref_ptr<rel::IDescriptorSet> descriptor_set;
         util::ref_ptr<rel::IBuffer> cbuffer0;
-        CB0 cb0;
+        std::array<Padded<CB0>, 2> cb0;
     };
 
     std::uint32_t n_frame_ = 0;
@@ -193,7 +198,7 @@ class App3DMainWindow final : public MainWindow {
 
     util::ref_ptr<rel::IShaderModule> compileShaderModule(const char* filename, const char* target);
     bool initScene();
-    void updateMatrices(CB0& cb0);
+    void updateMatrices(Padded<CB0>* cb0);
     bool renderScene();
 };
 
@@ -288,7 +293,7 @@ bool App3DMainWindow::initScene() {
         "descriptor_set_layouts" : [ {
             "descriptor_list" : [
                 {"type" : "COMBINED_TEXTURE_SAMPLER", "shader_visibility" : "PIXEL"},  //
-                {"type" : "CONSTANT_BUFFER", "shader_visibility" : "VERTEX"}           //
+                {"type" : "CONSTANT_BUFFER_DYNAMIC", "shader_visibility" : "VERTEX"}   //
             ]
         } ]
     });
@@ -349,7 +354,7 @@ bool App3DMainWindow::initScene() {
         if (!(frame.descriptor_set = pipeline_layout_->createDescriptorSet(0))) { return false; }
         if (!(frame.cbuffer0 = device_->createBuffer(rel::BufferType::CONSTANT, sizeof(frame.cb0)))) { return false; }
         frame.descriptor_set->updateCombinedTextureSamplerDescriptor(*texture_, *sampler_, 0);
-        frame.descriptor_set->updateConstantBufferDescriptor(*frame.cbuffer0, 0);
+        frame.descriptor_set->updateConstantBufferDescriptor(*frame.cbuffer0, 0, sizeof(frame.cb0[0]), 0);
     }
 
     if (!loadModelFromObjFile("data/models/knot.obj",
@@ -367,13 +372,19 @@ bool App3DMainWindow::initScene() {
     return true;
 }
 
-void App3DMainWindow::updateMatrices(CB0& cb0) {
-    const auto m = rel::Mat4f::rotate(5.f * timer_.getCurrent(), {0.f, 1.f, 0.f});
-    const auto mv = m * rel::Mat4f::lookAt(camera_.eye, camera_.center, camera_.up);
+void App3DMainWindow::updateMatrices(Padded<CB0>* cb0) {
+    const auto r = rel::Mat4f::rotate(5.f * timer_.getCurrent(), {0.f, 1.f, 0.f});
+    const auto m1 = r * rel::Mat4f::translate({-1.f, 0.f, 0.f});
+    const auto m2 = r * rel::Mat4f::translate({1.f, 0.f, 0.f});
+    const auto v = rel::Mat4f::lookAt(camera_.eye, camera_.center, camera_.up);
+    const auto mv1 = m1 * v;
+    const auto mv2 = m2 * v;
     auto p = rel::Mat4f::perspective(float(viewport_extent_.width) / viewport_extent_.height, 50.0f, 0.5f, 50.0f);
     if (is_inverted_y_ndc_) { p.m[1][1] = -p.m[1][1]; }
-    cb0.mv = rel::Mat3f(mv);
-    cb0.mvp = mv * p;
+    cb0[0].mv = rel::Mat3f(mv1);
+    cb0[0].mvp = mv1 * p;
+    cb0[1].mv = rel::Mat3f(mv2);
+    cb0[1].mvp = mv2 * p;
 }
 
 bool App3DMainWindow::renderScene() {
@@ -389,13 +400,16 @@ bool App3DMainWindow::renderScene() {
 
     render_target_->bindVertexBuffer(*vertex_buffer_, 0, model_.vertex_stride, 0);
 
-    render_target_->bindDescriptorSet(*frame.descriptor_set, 0);
-
     render_target_->setPrimitiveTopology(rel::PrimitiveTopology::TRIANGLES);
+
+    render_target_->bindDescriptorSetDynamic(*frame.descriptor_set, 0, std::array{std::uint32_t(0)});
     for (const auto& part : model_.parts) { render_target_->drawGeometry(part.count, 1, part.offset, 0); }
 
-    updateMatrices(frame.cb0);
-    if (!frame.cbuffer0->updateBuffer(util::as_byte_span(std::span{&frame.cb0, 1}), 0)) { return false; }
+    render_target_->bindDescriptorSetDynamic(*frame.descriptor_set, 0, std::array{std::uint32_t(sizeof(frame.cb0[0]))});
+    for (const auto& part : model_.parts) { render_target_->drawGeometry(part.count, 1, part.offset, 0); }
+
+    updateMatrices(frame.cb0.data());
+    if (!frame.cbuffer0->updateBuffer(util::as_byte_span(std::span{frame.cb0}), 0)) { return false; }
 
     if (!render_target_->endRenderTarget()) { return false; }
 

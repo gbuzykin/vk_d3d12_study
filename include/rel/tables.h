@@ -31,6 +31,7 @@ constexpr std::array TBL_DESC_BINDING_TYPE{
     // DescriptorType::
     BindingType::SHADER_RESOURCE,  // COMBINED_TEXTURE_SAMPLER
     BindingType::CONSTANT_BUFFER,  // CONSTANT_BUFFER
+    BindingType::CONSTANT_BUFFER,  // CONSTANT_BUFFER_DYNAMIC
 };
 
 APP3D_REL_EXPORT Format parseFormat(std::string_view fmt);

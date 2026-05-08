@@ -353,6 +353,14 @@ void RenderTarget::bindDescriptorSet(IDescriptorSet& descriptor_set, std::uint32
                                           std::array{static_cast<DescriptorSet&>(descriptor_set).getHandle()}, {});
 }
 
+void RenderTarget::bindDescriptorSetDynamic(IDescriptorSet& descriptor_set, std::uint32_t set_index,
+                                            std::span<const std::uint32_t> offsets) {
+    auto& kit = frame_render_kits_[n_frame_];
+    kit.command_buffer.bindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS, current_pipeline_->getLayout().getHandle(),
+                                          set_index,
+                                          std::array{static_cast<DescriptorSet&>(descriptor_set).getHandle()}, offsets);
+}
+
 void RenderTarget::setPrimitiveTopology(PrimitiveTopology topology) {
     auto& kit = frame_render_kits_[n_frame_];
     kit.command_buffer.vkCmdSetPrimitiveTopologyEXT(TBL_VK_PRIMITIVE_TOPOLOGY[unsigned(topology)]);

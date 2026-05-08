@@ -14,6 +14,7 @@ class Buffer : public util::ref_counter, public IBuffer {
     ~Buffer() override;
 
     VkDeviceSize getSize() const { return size_; }
+    VkDeviceSize getAlignment() const { return alignment_; }
 
     bool create(BufferType type, VkDeviceSize size);
 
@@ -28,6 +29,7 @@ class Buffer : public util::ref_counter, public IBuffer {
     util::ref_ptr<Device> device_;
     BufferType type_{};
     VkDeviceSize size_ = 0;
+    VkDeviceSize alignment_ = 1;
     VkBuffer buffer_{VK_NULL_HANDLE};
     VmaAllocation allocation_{VK_NULL_HANDLE};
 };

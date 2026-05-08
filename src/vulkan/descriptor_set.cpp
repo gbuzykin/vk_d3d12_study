@@ -43,13 +43,14 @@ void DescriptorSet::updateCombinedTextureSamplerDescriptor(ITexture& texture, IS
         {});
 }
 
-void DescriptorSet::updateConstantBufferDescriptor(IBuffer& buffer, std::uint32_t slot) {
+void DescriptorSet::updateConstantBufferDescriptor(IBuffer& buffer, std::uint64_t offset, std::uint64_t size,
+                                                   std::uint32_t slot) {
     const auto& binding = handle_.bindings[slot][unsigned(BindingType::CONSTANT_BUFFER)];
     const std::array buffer_infos{
         VkDescriptorBufferInfo{
             .buffer = static_cast<Buffer&>(buffer).getHandle(),
-            .offset = 0,
-            .range = VK_WHOLE_SIZE,
+            .offset = VkDeviceSize(offset),
+            .range = VkDeviceSize(size),
         },
     };
     device_->updateDescriptorSets(

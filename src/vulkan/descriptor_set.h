@@ -21,7 +21,8 @@ class DescriptorSet final : public util::ref_counter, public IDescriptorSet {
     //@{ IDescriptorSet
     util::ref_counter& getRefCounter() override { return *this; }
     void updateCombinedTextureSamplerDescriptor(ITexture& texture, ISampler& sampler, std::uint32_t slot) override;
-    void updateConstantBufferDescriptor(IBuffer& buffer, std::uint32_t slot) override;
+    void updateConstantBufferDescriptor(IBuffer& buffer, std::uint64_t offset, std::uint64_t size,
+                                        std::uint32_t slot) override;
     //@}
 
  private:

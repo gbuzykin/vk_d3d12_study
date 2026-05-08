@@ -38,6 +38,8 @@ class RenderTarget final : public util::ref_counter, public IRenderTarget {
     void bindPipeline(IPipeline& pipeline) override;
     void bindVertexBuffer(IBuffer& buffer, std::uint32_t slot, std::uint32_t stride, std::uint32_t offset) override;
     void bindDescriptorSet(IDescriptorSet& descriptor_set, std::uint32_t set_index) override;
+    void bindDescriptorSetDynamic(IDescriptorSet& descriptor_set, std::uint32_t set_index,
+                                  std::span<const std::uint32_t> offsets) override;
     void setPrimitiveTopology(PrimitiveTopology topology) override;
     void drawGeometry(std::uint32_t vertex_count, std::uint32_t instance_count, std::uint32_t first_vertex,
                       std::uint32_t first_instance) override;

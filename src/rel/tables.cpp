@@ -26,6 +26,7 @@ const std::unordered_map<std::string_view, PrimitiveTopology> g_primitive_topolo
 const std::unordered_map<std::string_view, DescriptorType> g_descriptor_types{
     {"COMBINED_TEXTURE_SAMPLER", DescriptorType::COMBINED_TEXTURE_SAMPLER},
     {"CONSTANT_BUFFER", DescriptorType::CONSTANT_BUFFER},
+    {"CONSTANT_BUFFER_DYNAMIC", DescriptorType::CONSTANT_BUFFER_DYNAMIC},
 };
 }  // namespace
 

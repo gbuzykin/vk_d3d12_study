@@ -1,6 +1,7 @@
 #include "buffer.h"
 
 #include "device.h"
+#include "rendering_driver.h"
 #include "tables.h"
 #include "vulkan_logger.h"
 
@@ -16,6 +17,12 @@ Buffer::Buffer(Device& device) : device_(util::not_null{&device}) {}
 Buffer::~Buffer() { vmaDestroyBuffer(device_->getAllocator(), buffer_, allocation_); }
 
 bool Buffer::create(BufferType type, VkDeviceSize size) {
+    if (type == BufferType::CONSTANT) {
+        const auto& props = device_->getPhysicalDevice().getProperties();
+        alignment_ = props.limits.minUniformBufferOffsetAlignment;
+        size = (size + alignment_ - 1) & ~(alignment_ - 1);
+    }
+
     const VkBufferCreateInfo create_info{
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size = size,

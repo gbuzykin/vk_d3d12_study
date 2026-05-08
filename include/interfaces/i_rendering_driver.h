@@ -75,7 +75,8 @@ struct IDescriptorSet {
     virtual ~IDescriptorSet() = default;
     virtual util::ref_counter& getRefCounter() = 0;
     virtual void updateCombinedTextureSamplerDescriptor(ITexture& texture, ISampler& sampler, std::uint32_t slot) = 0;
-    virtual void updateConstantBufferDescriptor(IBuffer& buffer, std::uint32_t slot) = 0;
+    virtual void updateConstantBufferDescriptor(IBuffer& buffer, std::uint64_t offset, std::uint64_t size,
+                                                std::uint32_t slot) = 0;
 };
 
 struct IRenderTarget {
@@ -92,6 +93,8 @@ struct IRenderTarget {
     virtual void bindPipeline(IPipeline& pipeline) = 0;
     virtual void bindVertexBuffer(IBuffer& buffer, std::uint32_t slot, std::uint32_t stride, std::uint32_t offset) = 0;
     virtual void bindDescriptorSet(IDescriptorSet& descriptor_set, std::uint32_t set_index) = 0;
+    virtual void bindDescriptorSetDynamic(IDescriptorSet& descriptor_set, std::uint32_t set_index,
+                                          std::span<const std::uint32_t> offsets) = 0;
     virtual void setPrimitiveTopology(PrimitiveTopology topology) = 0;
     virtual void drawGeometry(std::uint32_t vertex_count, std::uint32_t instance_count, std::uint32_t first_vertex,
                               std::uint32_t first_instance) = 0;
