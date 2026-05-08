@@ -8,10 +8,11 @@
 #include "shader_module.h"
 #include "surface.h"
 #include "swap_chain.h"
-#include "tables.h"
 #include "texture.h"
 #include "vulkan_logger.h"
 #include "wrappers.h"
+
+#include "rel/tables.h"
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -332,7 +333,7 @@ bool Device::updateBuffer(std::span<const std::uint8_t> data, VkBuffer dst, VkDe
     return true;
 }
 
-bool Device::updateImage(const std::uint8_t* data, VkImage dst, VkFormat format, std::uint32_t first_subresource,
+bool Device::updateImage(const std::uint8_t* data, VkImage dst, Format format, std::uint32_t first_subresource,
                          std::span<const UpdateTextureDesc> update_subresource_descs,
                          VkPipelineStageFlags generating_stages, VkPipelineStageFlags consuming_stages,
                          VkAccessFlags current_access, VkAccessFlags new_access, VkImageLayout current_layout,
@@ -342,7 +343,7 @@ bool Device::updateImage(const std::uint8_t* data, VkImage dst, VkFormat format,
 
     if (!waitForFences(std::array{kit.fence}, VK_FALSE, FINISH_TRANSFER_TIMEOUT)) { return false; }
 
-    const std::uint32_t bytes_per_pixel = getFormatSizeAlignment(format).first;
+    const std::uint32_t bytes_per_pixel = TBL_FORMAT_SIZE[unsigned(format)];
 
     auto size_of_subresource = [bytes_per_pixel](const auto& desc) {
         return (desc.buffer_row_size ?

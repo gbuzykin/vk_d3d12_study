@@ -42,7 +42,7 @@ class Device final : public util::ref_counter, public IDevice {
                       VkPipelineStageFlags generating_stages, VkPipelineStageFlags consuming_stages,
                       VkAccessFlags current_access, VkAccessFlags new_access,
                       std::span<const VkSemaphore> signal_semaphores);
-    bool updateImage(const std::uint8_t* data, VkImage dst, VkFormat format, std::uint32_t first_subresource,
+    bool updateImage(const std::uint8_t* data, VkImage dst, Format format, std::uint32_t first_subresource,
                      std::span<const UpdateTextureDesc> update_subresource_descs,
                      VkPipelineStageFlags generating_stages, VkPipelineStageFlags consuming_stages,
                      VkAccessFlags current_access, VkAccessFlags new_access, VkImageLayout current_layout,

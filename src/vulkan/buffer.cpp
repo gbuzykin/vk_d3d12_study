@@ -1,9 +1,8 @@
 #include "buffer.h"
 
 #include "device.h"
+#include "tables.h"
 #include "vulkan_logger.h"
-
-#include <array>
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -17,15 +16,10 @@ Buffer::Buffer(Device& device) : device_(util::not_null{&device}) {}
 Buffer::~Buffer() { vmaDestroyBuffer(device_->getAllocator(), buffer_, allocation_); }
 
 bool Buffer::create(BufferType type, VkDeviceSize size) {
-    constexpr std::array usage{
-        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-    };
-
     const VkBufferCreateInfo create_info{
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size = size,
-        .usage = VkBufferUsageFlags(usage[unsigned(type)] | VK_BUFFER_USAGE_TRANSFER_DST_BIT),
+        .usage = VkBufferUsageFlags(TBL_VK_BUFFER_USAGE[unsigned(type)] | VK_BUFFER_USAGE_TRANSFER_DST_BIT),
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
 

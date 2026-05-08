@@ -1,12 +1,12 @@
 #pragma once
 
 #include "rel/data_blob.h"
+#include "rel/structs.h"
 #include "rel/win_desc.h"
 #include "util/ref_counter.h"
 #include "util/ref_ptr.h"
 
 #include <uxs/db/value.h>
-#include <uxs/utility.h>
 
 #if defined(WIN32)
 #    define APP3D_ENTRY_EXPORT extern "C" __declspec(dllexport)
@@ -31,93 +31,6 @@ enum class RenderTargetResult {
     SUBOPTIMAL,
     OUT_OF_DATE,
     FAILED,
-};
-
-enum class PrimitiveTopology {
-    POINTS = 0,
-    LINES,
-    LINE_STRIP,
-    TRIANGLES,
-    TRIANGLE_STRIP,
-};
-
-enum class BufferType {
-    VERTEX = 0,
-    CONSTANT,
-};
-
-enum class SamplerFilter {
-    MIN_MAG_MIP_POINT = 0,
-    MIN_MAG_POINT_MIP_LINEAR,
-    MIN_POINT_MAG_LINEAR_MIP_POINT,
-    MIN_POINT_MAG_MIP_LINEAR,
-    MIN_LINEAR_MAG_MIP_POINT,
-    MIN_LINEAR_MAG_POINT_MIP_LINEAR,
-    MIN_MAG_LINEAR_MIP_POINT,
-    MIN_MAG_MIP_LINEAR,
-    ANISOTROPIC,
-};
-
-enum class SamplerAddressMode {
-    REPEAT = 0,
-    MIRRORED_REPEAT,
-    CLAMP_TO_EDGE,
-    MIRROR_CLAMP_TO_EDGE,
-};
-
-enum class TextureFlags {
-    NONE = 0,
-    RENDER_TARGET = 1,
-};
-UXS_IMPLEMENT_BITWISE_OPS_FOR_ENUM(TextureFlags);
-
-struct Vec2i {
-    std::int32_t x, y;
-};
-
-struct Vec3i {
-    std::int32_t x, y, z;
-};
-
-struct Color4f {
-    float r, g, b, a;
-};
-
-struct Extent2u {
-    std::uint32_t width, height;
-};
-
-struct Extent3u {
-    std::uint32_t width, height, depth;
-};
-
-struct Rect {
-    Vec2i offset;
-    Extent2u extent;
-};
-
-struct UpdateTextureDesc {
-    std::size_t buffer_offset;
-    std::uint32_t buffer_row_size;
-    std::uint32_t buffer_row_count;
-    Vec3i image_offset;
-    Extent3u image_extent;
-};
-
-struct SamplerDesc {
-    SamplerFilter filter;
-    SamplerAddressMode address_mode_u;
-    SamplerAddressMode address_mode_v;
-    SamplerAddressMode address_mode_w;
-    float min_lod;
-    float max_lod;
-    float mip_lod_bias;
-    std::uint32_t max_anisotropy;
-};
-
-struct TextureDesc {
-    TextureFlags flags;
-    Extent3u extent;
 };
 
 struct IShaderModule {

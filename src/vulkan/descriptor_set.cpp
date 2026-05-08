@@ -2,6 +2,7 @@
 
 #include "device.h"
 #include "sampler.h"
+#include "tables.h"
 #include "texture.h"
 
 using namespace app3d;
@@ -35,7 +36,7 @@ void DescriptorSet::updateCombinedTextureSamplerDescriptor(ITexture& texture, IS
                 .dstBinding = binding.binding,
                 .dstArrayElement = binding.array_element,
                 .descriptorCount = std::uint32_t(image_infos.size()),
-                .descriptorType = PipelineLayout::vulkan_desc_types[unsigned(binding.type)],
+                .descriptorType = TBL_VK_DESC_TYPE[unsigned(binding.desc_type)],
                 .pImageInfo = image_infos.data(),
             },
         },
@@ -59,7 +60,7 @@ void DescriptorSet::updateConstantBufferDescriptor(IBuffer& buffer, std::uint32_
                 .dstBinding = binding.binding,
                 .dstArrayElement = binding.array_element,
                 .descriptorCount = std::uint32_t(buffer_infos.size()),
-                .descriptorType = PipelineLayout::vulkan_desc_types[unsigned(binding.type)],
+                .descriptorType = TBL_VK_DESC_TYPE[unsigned(binding.desc_type)],
                 .pBufferInfo = buffer_infos.data(),
             },
         },

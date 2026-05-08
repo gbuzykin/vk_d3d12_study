@@ -10,10 +10,13 @@ struct Vec2f {
 
 struct Vec3f {
     float x, y, z;
+    explicit constexpr operator Vec2f() const { return {.x = x, .y = y}; }
 };
 
 struct Vec4f {
     float x, y, z, w;
+    explicit constexpr operator Vec2f() const { return {.x = x, .y = y}; }
+    explicit constexpr operator Vec3f() const { return {.x = x, .y = y, .z = z}; }
 };
 
 constexpr float deg2rad(float a) { return a * 0.017453292529943296f; }
@@ -94,7 +97,7 @@ struct Mat4f {
                  {m[0][3], m[1][3], m[2][3], m[3][3]}}};
     }
 
-    constexpr operator Mat3f() const {
+    explicit constexpr operator Mat3f() const {
         return {{{m[0][0], m[0][1], m[0][2]}, {m[1][0], m[1][1], m[1][2]}, {m[2][0], m[2][1], m[2][2]}}};
     }
 };

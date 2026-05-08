@@ -11,8 +11,6 @@ class DescriptorSet final : public util::ref_counter, public IDescriptorSet {
     DescriptorSet(Device& device, PipelineLayout& pipeline_layout);
     ~DescriptorSet() override;
 
-    using BindingType = PipelineLayout::BindingType;
-
     bool create(std::uint32_t set_layout_index) {
         return pipeline_layout_->obtainDescriptorSet(set_layout_index, handle_);
     }

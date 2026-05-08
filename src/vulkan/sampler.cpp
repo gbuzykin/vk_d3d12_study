@@ -1,9 +1,8 @@
 #include "sampler.h"
 
 #include "device.h"
+#include "tables.h"
 #include "vulkan_logger.h"
-
-#include <array>
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -17,34 +16,14 @@ Sampler::Sampler(Device& device) : device_(util::not_null{&device}) {}
 Sampler::~Sampler() { device_->vkDestroySampler(sampler_, nullptr); }
 
 bool Sampler::create(const SamplerDesc& desc) {
-    constexpr std::array mag_filters{
-        VK_FILTER_NEAREST, VK_FILTER_NEAREST, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_FILTER_NEAREST,
-        VK_FILTER_NEAREST, VK_FILTER_LINEAR,  VK_FILTER_LINEAR, VK_FILTER_LINEAR,
-    };
-    constexpr std::array min_filters{
-        VK_FILTER_NEAREST, VK_FILTER_NEAREST, VK_FILTER_NEAREST, VK_FILTER_NEAREST, VK_FILTER_LINEAR,
-        VK_FILTER_LINEAR,  VK_FILTER_LINEAR,  VK_FILTER_LINEAR,  VK_FILTER_LINEAR,
-    };
-    constexpr std::array mipmap_filters{
-        VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_MIPMAP_MODE_LINEAR,  VK_SAMPLER_MIPMAP_MODE_NEAREST,
-        VK_SAMPLER_MIPMAP_MODE_LINEAR,  VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_MIPMAP_MODE_LINEAR,
-        VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_MIPMAP_MODE_LINEAR,  VK_SAMPLER_MIPMAP_MODE_LINEAR,
-    };
-    constexpr std::array address_mode{
-        VK_SAMPLER_ADDRESS_MODE_REPEAT,
-        VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT,
-        VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-        VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE,
-    };
-
     const VkSamplerCreateInfo create_info{
         .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-        .magFilter = mag_filters[unsigned(desc.filter)],
-        .minFilter = min_filters[unsigned(desc.filter)],
-        .mipmapMode = mipmap_filters[unsigned(desc.filter)],
-        .addressModeU = address_mode[unsigned(desc.address_mode_u)],
-        .addressModeV = address_mode[unsigned(desc.address_mode_v)],
-        .addressModeW = address_mode[unsigned(desc.address_mode_w)],
+        .magFilter = TBL_VK_MIN_MAG_FILTER[unsigned(desc.filter)][1],
+        .minFilter = TBL_VK_MIN_MAG_FILTER[unsigned(desc.filter)][0],
+        .mipmapMode = TBL_VK_MIPMAP_FILTER[unsigned(desc.filter)],
+        .addressModeU = TBL_VK_ADDRESS_MODE[unsigned(desc.address_mode_u)],
+        .addressModeV = TBL_VK_ADDRESS_MODE[unsigned(desc.address_mode_v)],
+        .addressModeW = TBL_VK_ADDRESS_MODE[unsigned(desc.address_mode_w)],
         .mipLodBias = desc.mip_lod_bias,
         .anisotropyEnable = desc.filter >= SamplerFilter::ANISOTROPIC ? VK_TRUE : VK_FALSE,
         .maxAnisotropy = float(desc.max_anisotropy),

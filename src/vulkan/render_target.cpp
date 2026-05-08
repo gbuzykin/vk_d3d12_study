@@ -4,6 +4,7 @@
 #include "device.h"
 #include "pipeline.h"
 #include "swap_chain.h"
+#include "tables.h"
 #include "vulkan_logger.h"
 #include "wrappers.h"
 
@@ -35,10 +36,12 @@ bool RenderTarget::create(const uxs::db::value& opts) {
         if (!device_->getGraphicsQueue().obtainCommandBuffer(kit.command_buffer)) { return false; }
     }
 
+    image_format_ = frame_image_provider_->getImageFormat();
+
     uxs::inline_dynarray<VkAttachmentDescription, 2> attachments_descriptions;
 
     attachments_descriptions.emplace_back(VkAttachmentDescription{
-        .format = frame_image_provider_->getImageFormat(),
+        .format = image_format_,
         .samples = VK_SAMPLE_COUNT_1_BIT,
         .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -120,21 +123,21 @@ bool RenderTarget::create(const uxs::db::value& opts) {
 }
 
 bool RenderTarget::createFrameResources() {
-    image_extent_ = frame_image_provider_->getImageExtent();
+    const auto image_extent = frame_image_provider_->getImageExtent();
+    image_extent_.width = image_extent.width;
+    image_extent_.height = image_extent.height;
 
     for (auto& kit : frame_render_kits_) {
         uxs::inline_dynarray<VkFramebufferAttachmentImageInfo, 2> attachment_infos;
 
-        const VkFormat image_format = frame_image_provider_->getImageFormat();
-
         attachment_infos.emplace_back(VkFramebufferAttachmentImageInfo{
             .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_ATTACHMENT_IMAGE_INFO,
             .usage = frame_image_provider_->getImageUsage(),
-            .width = image_extent_.width,
-            .height = image_extent_.height,
+            .width = image_extent.width,
+            .height = image_extent.height,
             .layerCount = 1,
             .viewFormatCount = 1,
-            .pViewFormats = &image_format,
+            .pViewFormats = &image_format_,
         });
 
         if (use_depth_) {
@@ -142,7 +145,7 @@ bool RenderTarget::createFrameResources() {
                 .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                 .imageType = VK_IMAGE_TYPE_2D,
                 .format = depth_stencil_format_,
-                .extent = {.width = image_extent_.width, .height = image_extent_.height, .depth = 1},
+                .extent = {.width = image_extent.width, .height = image_extent.height, .depth = 1},
                 .mipLevels = 1,
                 .arrayLayers = 1,
                 .samples = VK_SAMPLE_COUNT_1_BIT,
@@ -185,8 +188,8 @@ bool RenderTarget::createFrameResources() {
             attachment_infos.emplace_back(VkFramebufferAttachmentImageInfo{
                 .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_ATTACHMENT_IMAGE_INFO,
                 .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-                .width = image_extent_.width,
-                .height = image_extent_.height,
+                .width = image_extent.width,
+                .height = image_extent.height,
                 .layerCount = 1,
                 .viewFormatCount = 1,
                 .pViewFormats = &depth_stencil_format_,
@@ -205,8 +208,8 @@ bool RenderTarget::createFrameResources() {
             .flags = VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT,
             .renderPass = render_pass_,
             .attachmentCount = std::uint32_t(attachment_infos.size()),
-            .width = image_extent_.width,
-            .height = image_extent_.height,
+            .width = image_extent.width,
+            .height = image_extent.height,
             .layers = 1,
         };
 
@@ -268,10 +271,10 @@ RenderTargetResult RenderTarget::beginRenderTarget(const Color4f& clear_color, f
         attachments.push_back(kit.depth_stencil_image_view);
     }
 
-    kit.command_buffer.beginRenderPass(
-        render_pass_, kit.framebuffer,
-        VkRect2D{.extent = {.width = image_extent_.width, .height = image_extent_.height}}, VK_SUBPASS_CONTENTS_INLINE,
-        clear_values, attachments);
+    const VkRect2D view_rect{.offset = {.x = 0, .y = 0}, .extent = image_extent_};
+
+    kit.command_buffer.beginRenderPass(render_pass_, kit.framebuffer, view_rect, VK_SUBPASS_CONTENTS_INLINE,
+                                       clear_values, attachments);
 
     kit.command_buffer.setViewports(0, std::array{VkViewport{.x = 0.f,
                                                              .y = 0.f,
@@ -280,7 +283,7 @@ RenderTargetResult RenderTarget::beginRenderTarget(const Color4f& clear_color, f
                                                              .minDepth = 0.f,
                                                              .maxDepth = 1.f}});
 
-    kit.command_buffer.setScissors(0, std::array{VkRect2D{.offset = {.x = 0, .y = 0}, .extent = image_extent_}});
+    kit.command_buffer.setScissors(0, std::array{view_rect});
 
     current_pipeline_ = &static_cast<Pipeline&>(pipeline);
     kit.command_buffer.vkCmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, current_pipeline_->getHandle());
@@ -351,12 +354,8 @@ void RenderTarget::bindDescriptorSet(IDescriptorSet& descriptor_set, std::uint32
 }
 
 void RenderTarget::setPrimitiveTopology(PrimitiveTopology topology) {
-    constexpr std::array topologies{
-        VK_PRIMITIVE_TOPOLOGY_POINT_LIST,    VK_PRIMITIVE_TOPOLOGY_LINE_LIST,      VK_PRIMITIVE_TOPOLOGY_LINE_STRIP,
-        VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
-    };
     auto& kit = frame_render_kits_[n_frame_];
-    kit.command_buffer.vkCmdSetPrimitiveTopologyEXT(topologies[unsigned(topology)]);
+    kit.command_buffer.vkCmdSetPrimitiveTopologyEXT(TBL_VK_PRIMITIVE_TOPOLOGY[unsigned(topology)]);
 }
 
 void RenderTarget::drawGeometry(std::uint32_t vertex_count, std::uint32_t instance_count, std::uint32_t first_vertex,
