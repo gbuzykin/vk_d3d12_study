@@ -35,16 +35,15 @@ class SwapChain final : public FrameImageProvider, public ISwapChain {
     VkImageLayout getImageLayout() const override;
     void imageBarrierBefore(CommandBuffer& command_buffer, std::uint32_t image_index) override;
     void imageBarrierAfter(CommandBuffer& command_buffer, std::uint32_t image_index) override;
-    RenderTargetResult acquireFrameImage(std::uint32_t n_frame, std::uint64_t timeout,
-                                         std::uint32_t& image_index) override;
-    RenderTargetResult submitFrameImage(std::uint32_t n_frame, std::uint32_t image_index, CommandBuffer& command_buffer,
+    RenderTargetResult acquireFrameImage(std::uint64_t timeout, std::uint32_t& image_index) override;
+    RenderTargetResult submitFrameImage(std::uint32_t image_index, CommandBuffer& command_buffer,
                                         VkFence fence) override;
     void removeRenderTarget(RenderTarget* render_target) override;
     //@}
 
     //@{ ISwapChain
     util::ref_counter& getRefCounter() override { return *this; }
-    bool recreate(const uxs::db::value& opts) override;
+    bool recreate(const uxs::db::value& opts) override { return create(opts); }
     util::ref_ptr<IRenderTarget> createRenderTarget(const uxs::db::value& opts) override;
     //@}
 
@@ -55,9 +54,10 @@ class SwapChain final : public FrameImageProvider, public ISwapChain {
     VkFormat image_format_{};
     VkExtent2D image_extent_{};
     VkPipelineStageFlags image_usage_{};
-    uxs::inline_dynarray<VkImage, 3> images_;
-    uxs::inline_dynarray<VkImageView, 3> image_views_;
+    uxs::inline_dynarray<VkImage, 8> images_;
+    uxs::inline_dynarray<VkImageView, 8> image_views_;
     RenderTarget* render_target_ = nullptr;
+    std::uint32_t n_image_ = 0;
 
     struct SubmitImageKit {
         VkSemaphore sem_image_acquired{VK_NULL_HANDLE};
@@ -66,9 +66,8 @@ class SwapChain final : public FrameImageProvider, public ISwapChain {
         CommandBuffer present_command_buffer;
     };
 
-    uxs::inline_dynarray<SubmitImageKit, 3> submit_kits_;
+    uxs::inline_dynarray<SubmitImageKit, 8> submit_kits_;
 
-    bool recreateSwapChainResources(const uxs::db::value& opts);
     bool loadImageHandles();
     bool createImageViews();
     void destroyImageViews();

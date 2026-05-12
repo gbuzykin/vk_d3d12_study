@@ -103,17 +103,73 @@ VkSurfaceFormatKHR SwapChain::chooseImageFormat(std::span<const VkSurfaceFormatK
 }
 
 bool SwapChain::create(const uxs::db::value& opts) {
-    submit_kits_.resize(getFifCount());
-    for (auto& kit : submit_kits_) {
-        if (!device_->createSemaphore(kit.sem_image_acquired)) { return false; }
-        if (!device_->createSemaphore(kit.sem_rendering_complete)) { return false; }
-        if (surface_->getPresentQueue().getFamilyIndex() != device_->getGraphicsQueue().getFamilyIndex()) {
-            if (!device_->createSemaphore(kit.sem_ready_to_present)) { return false; }
-            if (!surface_->getPresentQueue().obtainCommandBuffer(kit.present_command_buffer)) { return false; }
+    if (!surface_->loadCapabilities(device_->getPhysicalDevice())) { return false; }
+
+    const auto& capabilities = surface_->getCapabilities();
+    const auto image_format = surface_->getImageFormat();
+
+    const std::uint32_t image_count = chooseImageCount(capabilities, opts);
+    image_format_ = image_format.format;
+    image_extent_ = chooseImageExtent(capabilities, opts);
+    image_usage_ = surface_->getImageUsage();
+
+    if (image_extent_.width == 0 || image_extent_.height == 0) {
+        logError(LOG_VK "failed to choose swap chain image size");
+        return false;
+    }
+
+    const std::uint32_t layer_count = std::max<std::uint32_t>(opts.value<std::uint32_t>("layer_count"), 1);
+
+    if (render_target_) { render_target_->destroyFrameResources(); }
+    destroyImageViews();
+    images_.clear();
+
+    const std::uint32_t old_summit_kit_count = static_cast<std::uint32_t>(submit_kits_.size());
+    const std::uint32_t new_summit_kit_count = std::max(getFifCount(), image_count);
+    if (new_summit_kit_count > old_summit_kit_count) {
+        submit_kits_.resize(new_summit_kit_count);
+        for (std::uint32_t n = old_summit_kit_count; n < new_summit_kit_count; ++n) {
+            auto& kit = submit_kits_[n];
+            if (!device_->createSemaphore(kit.sem_image_acquired)) { return false; }
+            if (!device_->createSemaphore(kit.sem_rendering_complete)) { return false; }
+            if (surface_->getPresentQueue().getFamilyIndex() != device_->getGraphicsQueue().getFamilyIndex()) {
+                if (!device_->createSemaphore(kit.sem_ready_to_present)) { return false; }
+                if (!surface_->getPresentQueue().obtainCommandBuffer(kit.present_command_buffer)) { return false; }
+            }
         }
     }
 
-    return recreateSwapChainResources(opts);
+    const VkSwapchainCreateInfoKHR create_info{
+        .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .surface = surface_->getHandle(),
+        .minImageCount = image_count,
+        .imageFormat = image_format.format,
+        .imageColorSpace = image_format.colorSpace,
+        .imageExtent = image_extent_,
+        .imageArrayLayers = layer_count,
+        .imageUsage = image_usage_,
+        .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+        .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+        .presentMode = surface_->getPresentMode(),
+        .clipped = VK_TRUE,
+        .oldSwapchain = swap_chain_,
+    };
+
+    const VkSwapchainKHR old_swap_chain = swap_chain_;
+    VkResult result = device_->vkCreateSwapchainKHR(&create_info, nullptr, &swap_chain_);
+    if (result != VK_SUCCESS || swap_chain_ == VK_NULL_HANDLE) {
+        logError(LOG_VK "couldn't create swap chain: {}", result);
+        return false;
+    }
+
+    device_->vkDestroySwapchainKHR(old_swap_chain, nullptr);
+
+    if (!loadImageHandles()) { return false; }
+    if (!createImageViews()) { return false; }
+    if (render_target_ && !render_target_->createFrameResources()) { return false; }
+
+    return true;
 }
 
 VkPipelineStageFlags SwapChain::getImageConsumingStages() const { return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT; }
@@ -143,20 +199,17 @@ void SwapChain::imageBarrierAfter(CommandBuffer& command_buffer, std::uint32_t i
     }
 }
 
-RenderTargetResult SwapChain::acquireFrameImage(std::uint32_t n_frame, std::uint64_t timeout,
-                                                std::uint32_t& image_index) {
-    auto& kit = submit_kits_[n_frame];
-    VkResult result = device_->vkAcquireNextImageKHR(swap_chain_, timeout, kit.sem_image_acquired, VK_NULL_HANDLE,
-                                                     &image_index);
+RenderTargetResult SwapChain::acquireFrameImage(std::uint64_t timeout, std::uint32_t& image_index) {
+    VkResult result = device_->vkAcquireNextImageKHR(swap_chain_, timeout, submit_kits_[n_image_].sem_image_acquired,
+                                                     VK_NULL_HANDLE, &image_index);
     if (result == VK_SUCCESS) { return RenderTargetResult::SUCCESS; }
     if (result == VK_SUBOPTIMAL_KHR) { return RenderTargetResult::SUBOPTIMAL; }
     if (result == VK_ERROR_OUT_OF_DATE_KHR) { return RenderTargetResult::OUT_OF_DATE; }
     return RenderTargetResult::FAILED;
 }
 
-RenderTargetResult SwapChain::submitFrameImage(std::uint32_t n_frame, std::uint32_t image_index,
-                                               CommandBuffer& command_buffer, VkFence fence) {
-    auto& kit = submit_kits_[n_frame];
+RenderTargetResult SwapChain::submitFrameImage(std::uint32_t image_index, CommandBuffer& command_buffer, VkFence fence) {
+    auto& kit = submit_kits_[n_image_];
 
     const bool queue_family_transition = device_->getGraphicsQueue().getFamilyIndex() !=
                                          surface_->getPresentQueue().getFamilyIndex();
@@ -205,6 +258,7 @@ RenderTargetResult SwapChain::submitFrameImage(std::uint32_t n_frame, std::uint3
         ready_to_present = kit.sem_ready_to_present;
     }
 
+    if (++n_image_ == images_.size()) { n_image_ = 0; }
     return surface_->getPresentQueue().presentImages(std::array{ready_to_present},
                                                      {std::array{swap_chain_}, std::array{image_index}});
 }
@@ -215,8 +269,6 @@ void SwapChain::removeRenderTarget(RenderTarget* render_target) {
 
 //@{ ISwapChain
 
-bool SwapChain::recreate(const uxs::db::value& opts) { return recreateSwapChainResources(opts); }
-
 util::ref_ptr<IRenderTarget> SwapChain::createRenderTarget(const uxs::db::value& opts) {
     auto render_target = util::make_new<RenderTarget>(*device_, *this);
     if (!render_target->create(opts)) { return nullptr; }
@@ -225,61 +277,6 @@ util::ref_ptr<IRenderTarget> SwapChain::createRenderTarget(const uxs::db::value&
 }
 
 //@}
-
-bool SwapChain::recreateSwapChainResources(const uxs::db::value& opts) {
-    if (!surface_->loadCapabilities(device_->getPhysicalDevice())) { return false; }
-
-    const auto& capabilities = surface_->getCapabilities();
-    const auto image_format = surface_->getImageFormat();
-
-    const std::uint32_t image_count = chooseImageCount(capabilities, opts);
-    image_format_ = image_format.format;
-    image_extent_ = chooseImageExtent(capabilities, opts);
-    image_usage_ = surface_->getImageUsage();
-
-    if (image_extent_.width == 0 || image_extent_.height == 0) {
-        logError(LOG_VK "failed to choose swap chain image size");
-        return false;
-    }
-
-    const std::uint32_t layer_count = std::max<std::uint32_t>(opts.value<std::uint32_t>("layer_count"), 1);
-
-    if (render_target_) { render_target_->destroyFrameResources(); }
-    destroyImageViews();
-    images_.clear();
-
-    const VkSwapchainCreateInfoKHR create_info{
-        .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-        .surface = surface_->getHandle(),
-        .minImageCount = image_count,
-        .imageFormat = image_format.format,
-        .imageColorSpace = image_format.colorSpace,
-        .imageExtent = image_extent_,
-        .imageArrayLayers = layer_count,
-        .imageUsage = image_usage_,
-        .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
-        .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
-        .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-        .presentMode = surface_->getPresentMode(),
-        .clipped = VK_TRUE,
-        .oldSwapchain = swap_chain_,
-    };
-
-    const VkSwapchainKHR old_swap_chain = swap_chain_;
-    VkResult result = device_->vkCreateSwapchainKHR(&create_info, nullptr, &swap_chain_);
-    if (result != VK_SUCCESS || swap_chain_ == VK_NULL_HANDLE) {
-        logError(LOG_VK "couldn't create swap chain: {}", result);
-        return false;
-    }
-
-    device_->vkDestroySwapchainKHR(old_swap_chain, nullptr);
-
-    if (!loadImageHandles()) { return false; }
-    if (!createImageViews()) { return false; }
-    if (render_target_ && !render_target_->createFrameResources()) { return false; }
-
-    return true;
-}
 
 bool SwapChain::loadImageHandles() {
     std::uint32_t image_count = 0;
@@ -325,6 +322,7 @@ bool SwapChain::createImageViews() {
         }
     }
 
+    n_image_ = 0;
     return true;
 }
 

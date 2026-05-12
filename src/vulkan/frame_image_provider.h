@@ -22,10 +22,9 @@ class FrameImageProvider : public util::ref_counter {
     virtual VkImageLayout getImageLayout() const = 0;
     virtual void imageBarrierBefore(CommandBuffer& command_buffer, std::uint32_t image_index) = 0;
     virtual void imageBarrierAfter(CommandBuffer& command_buffer, std::uint32_t image_index) = 0;
-    virtual RenderTargetResult acquireFrameImage(std::uint32_t n_frame, std::uint64_t timeout,
-                                                 std::uint32_t& image_index) = 0;
-    virtual RenderTargetResult submitFrameImage(std::uint32_t n_frame, std::uint32_t image_index,
-                                                CommandBuffer& command_buffer, VkFence fence) = 0;
+    virtual RenderTargetResult acquireFrameImage(std::uint64_t timeout, std::uint32_t& image_index) = 0;
+    virtual RenderTargetResult submitFrameImage(std::uint32_t image_index, CommandBuffer& command_buffer,
+                                                VkFence fence) = 0;
     virtual void removeRenderTarget(RenderTarget* render_target) = 0;
 };
 

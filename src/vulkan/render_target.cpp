@@ -251,8 +251,7 @@ RenderTargetResult RenderTarget::beginRenderTarget(const Color4f& clear_color, f
     }
 
     current_image_index_ = 0;
-    render_target_status_ = frame_image_provider_->acquireFrameImage(n_frame_, ACQUIRE_FRAME_IMAGE_TIMEOUT,
-                                                                     current_image_index_);
+    render_target_status_ = frame_image_provider_->acquireFrameImage(ACQUIRE_FRAME_IMAGE_TIMEOUT, current_image_index_);
     if (render_target_status_ > RenderTargetResult::SUBOPTIMAL) { return render_target_status_; }
 
     if (!kit.command_buffer.beginCommandBuffer(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) {
@@ -302,8 +301,7 @@ bool RenderTarget::endRenderTarget() {
 
     if (!device_->resetFences(std::array{kit.fence})) { return false; }
 
-    render_target_status_ = frame_image_provider_->submitFrameImage(n_frame_, current_image_index_, kit.command_buffer,
-                                                                    kit.fence);
+    render_target_status_ = frame_image_provider_->submitFrameImage(current_image_index_, kit.command_buffer, kit.fence);
 
     if (++n_frame_ == frame_render_kits_.size()) { n_frame_ = 0; }
     return render_target_status_ <= RenderTargetResult::OUT_OF_DATE;
