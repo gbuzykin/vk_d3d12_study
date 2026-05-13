@@ -20,7 +20,8 @@ DescriptorSet::~DescriptorSet() {}
 //@{ IDescriptorSet
 
 void DescriptorSet::updateCombinedTextureSamplerDescriptor(ITexture& texture, ISampler& sampler, std::uint32_t slot) {
-    const auto& binding = handle_.bindings[slot][unsigned(BindingType::SHADER_RESOURCE)];
+    const auto& binding = pipeline_layout_->getBinding(
+        (*handle_.binding_offsets)[unsigned(BindingType::SHADER_RESOURCE)] + slot);
     const std::array image_infos{
         VkDescriptorImageInfo{
             .sampler = static_cast<Sampler&>(sampler).getHandle(),
@@ -45,7 +46,8 @@ void DescriptorSet::updateCombinedTextureSamplerDescriptor(ITexture& texture, IS
 
 void DescriptorSet::updateConstantBufferDescriptor(IBuffer& buffer, std::uint64_t offset, std::uint64_t size,
                                                    std::uint32_t slot) {
-    const auto& binding = handle_.bindings[slot][unsigned(BindingType::CONSTANT_BUFFER)];
+    const auto& binding = pipeline_layout_->getBinding(
+        (*handle_.binding_offsets)[unsigned(BindingType::CONSTANT_BUFFER)] + slot);
     const std::array buffer_infos{
         VkDescriptorBufferInfo{
             .buffer = static_cast<Buffer&>(buffer).getHandle(),
