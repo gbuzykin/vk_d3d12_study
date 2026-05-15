@@ -9,7 +9,7 @@ include(FetchContent)
 include(GenerateExportHeader)
 include(GNUInstallDirs)
 
-option(OPTION_DEBUG_USE_SANITIZERS "Use Sanitizers for Debug build" ON)
+option(OPTION_DEBUG_USE_SANITIZERS "Use Sanitizers for Debug build" OFF)
 
 set(INSTALL_WIN32_SYMBOLS_DIR ${CMAKE_INSTALL_BINDIR})
 
