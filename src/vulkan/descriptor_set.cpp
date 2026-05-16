@@ -16,10 +16,6 @@ DescriptorSet::DescriptorSet(Device& device, PipelineLayout& pipeline_layout)
 
 DescriptorSet::~DescriptorSet() {}
 
-bool DescriptorSet::create(std::uint32_t set_layout_index) {
-    return pipeline_layout_->obtainDescriptorSet(set_layout_index, handle_);
-}
-
 //@{ IDescriptorSet
 
 void DescriptorSet::updateCombinedTextureSamplerDescriptor(ITexture& texture, ISampler& sampler, std::uint32_t slot) {

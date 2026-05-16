@@ -19,6 +19,7 @@ using namespace app3d::rel::vulkan;
 PipelineLayout::PipelineLayout(Device& device) : device_(util::not_null(&device)) {}
 
 PipelineLayout::~PipelineLayout() {
+    ObjectDestroyer<VkDescriptorPool>::destroy(~*device_, desc_pool_);
     ObjectDestroyer<VkPipelineLayout>::destroy(~*device_, pipeline_layout_);
     for (const auto& set_layout : set_layouts_) {
         ObjectDestroyer<VkDescriptorSetLayout>::destroy(~*device_, set_layout);
@@ -26,10 +27,15 @@ PipelineLayout::~PipelineLayout() {
 }
 
 bool PipelineLayout::create(const uxs::db::value& config) {
+    std::uint32_t total_max_sets = 0;
+    uxs::inline_dynarray<VkDescriptorPoolSize> desc_counts;
+
     const auto& descriptor_set_layouts = config.value("descriptor_set_layouts");
 
     for (const auto& layout : descriptor_set_layouts.as_array()) {
         uxs::inline_dynarray<VkDescriptorSetLayoutBinding> bindings;
+        const std::uint32_t max_sets = layout.value_or<std::uint32_t>("max_sets", 8);
+        total_max_sets += max_sets;
 
         const auto& list = layout.value("descriptor_list");
 
@@ -62,6 +68,17 @@ bool PipelineLayout::create(const uxs::db::value& config) {
                 .descriptorCount = desc_count,
                 .stageFlags = VkShaderStageFlags(visibility),
             });
+
+            auto desc_counts_it = std::ranges::find_if(
+                desc_counts, [vulkan_type](const auto& item) { return item.type == vulkan_type; });
+            if (desc_counts_it != desc_counts.end()) {
+                desc_counts_it->descriptorCount += max_sets * desc_count;
+            } else {
+                desc_counts.emplace_back(VkDescriptorPoolSize{
+                    .type = vulkan_type,
+                    .descriptorCount = max_sets * desc_count,
+                });
+            }
         }
 
         const VkDescriptorSetLayoutCreateInfo create_info{
@@ -93,11 +110,23 @@ bool PipelineLayout::create(const uxs::db::value& config) {
         return false;
     }
 
-    return true;
+    return createDescriptorPool(total_max_sets, desc_counts);
 }
 
 bool PipelineLayout::obtainDescriptorSet(std::uint32_t set_layout_index, DescriptorSetHandle& handle) {
-    if (!device_->obtainDescriptorSet(set_layouts_[set_layout_index], handle.handle)) { return false; }
+    const VkDescriptorSetAllocateInfo allocate_info{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = desc_pool_,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &set_layouts_[set_layout_index],
+    };
+
+    VkResult result = vkAllocateDescriptorSets(~*device_, &allocate_info, &handle.handle);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't allocate descriptor sets: {}", result);
+        return false;
+    }
+
     handle.bindings = &bindings_[binding_offsets_[set_layout_index]];
     return true;
 }
@@ -110,4 +139,25 @@ util::ref_ptr<IDescriptorSet> PipelineLayout::createDescriptorSet(std::uint32_t 
     return std::move(descriptor_set);
 }
 
+void PipelineLayout::resetDescriptorAllocator() { vkResetDescriptorPool(~*device_, desc_pool_, 0); }
+
 //@}
+
+bool PipelineLayout::createDescriptorPool(std::uint32_t total_max_sets,
+                                          std::span<const VkDescriptorPoolSize> desc_counts) {
+    const VkDescriptorPoolCreateInfo create_info{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
+        .maxSets = total_max_sets,
+        .poolSizeCount = std::uint32_t(desc_counts.size()),
+        .pPoolSizes = desc_counts.data(),
+    };
+
+    VkResult result = vkCreateDescriptorPool(~*device_, &create_info, nullptr, &desc_pool_);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't create descriptor pool: {}", result);
+        return false;
+    }
+
+    return true;
+}

@@ -13,7 +13,9 @@ class DescriptorSet final : public util::ref_counter, public IDescriptorSet {
 
     using BindingType = PipelineLayout::BindingType;
 
-    bool create(std::uint32_t set_layout_index);
+    bool create(std::uint32_t set_layout_index) {
+        return pipeline_layout_->obtainDescriptorSet(set_layout_index, handle_);
+    }
 
     VkDescriptorSet operator~() { return handle_.handle; }
     PipelineLayout& getLayout() { return *pipeline_layout_; }

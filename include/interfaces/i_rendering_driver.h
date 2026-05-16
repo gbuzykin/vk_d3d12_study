@@ -134,6 +134,7 @@ struct IPipelineLayout {
     virtual ~IPipelineLayout() = default;
     virtual util::ref_counter& getRefCounter() = 0;
     virtual util::ref_ptr<IDescriptorSet> createDescriptorSet(std::uint32_t set_layout_index) = 0;
+    virtual void resetDescriptorAllocator() = 0;
 };
 
 struct IPipeline {
