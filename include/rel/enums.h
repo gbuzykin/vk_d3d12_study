@@ -38,6 +38,7 @@ enum class ShaderStage {
 enum class DescriptorType {
     COMBINED_TEXTURE_SAMPLER = 0,
     CONSTANT_BUFFER,
+    CONSTANT_BUFFER_DYNAMIC,
     TOTAL_COUNT,
 };
 
