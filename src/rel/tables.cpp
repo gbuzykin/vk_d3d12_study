@@ -24,9 +24,20 @@ const std::unordered_map<std::string_view, PrimitiveTopology> g_primitive_topolo
     {"TRIANGLE_STRIP", PrimitiveTopology::TRIANGLE_STRIP},
 };
 const std::unordered_map<std::string_view, DescriptorType> g_descriptor_types{
+    {"SAMPLER", DescriptorType::SAMPLER},
     {"COMBINED_TEXTURE_SAMPLER", DescriptorType::COMBINED_TEXTURE_SAMPLER},
+    {"TEXTURE", DescriptorType::TEXTURE},
+    {"BUFFER", DescriptorType::BUFFER},
+    {"RW_TEXTURE", DescriptorType::RW_TEXTURE},
+    {"RW_BUFFER", DescriptorType::RW_BUFFER},
     {"CONSTANT_BUFFER", DescriptorType::CONSTANT_BUFFER},
+    {"TEXTURE_BUFFER", DescriptorType::TEXTURE_BUFFER},
+    {"STRUCTURED_BUFFER", DescriptorType::STRUCTURED_BUFFER},
+    {"RW_STRUCTURED_BUFFER", DescriptorType::RW_STRUCTURED_BUFFER},
     {"CONSTANT_BUFFER_DYNAMIC", DescriptorType::CONSTANT_BUFFER_DYNAMIC},
+    {"TEXTURE_BUFFER_DYNAMIC", DescriptorType::TEXTURE_BUFFER_DYNAMIC},
+    {"STRUCTURED_BUFFER_DYNAMIC", DescriptorType::STRUCTURED_BUFFER_DYNAMIC},
+    {"RW_STRUCTURED_BUFFER_DYNAMIC", DescriptorType::RW_STRUCTURED_BUFFER_DYNAMIC},
 };
 }  // namespace
 

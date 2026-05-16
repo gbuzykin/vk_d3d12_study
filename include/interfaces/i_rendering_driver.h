@@ -74,7 +74,10 @@ struct ISampler {
 struct IDescriptorSet {
     virtual ~IDescriptorSet() = default;
     virtual util::ref_counter& getRefCounter() = 0;
-    virtual void updateCombinedTextureSamplerDescriptor(ITexture& texture, ISampler& sampler, std::uint32_t slot) = 0;
+    virtual void updateSamplerDescriptor(ISampler& sampler, std::uint32_t slot) = 0;
+    virtual void updateCombinedTextureSamplerDescriptor(ITexture& texture, ISampler& sampler, std::uint32_t slot,
+                                                        std::uint32_t sampler_slot) = 0;
+    virtual void updateShaderResourceDescriptor(ITexture& texture, std::uint32_t slot) = 0;
     virtual void updateConstantBufferDescriptor(IBuffer& buffer, std::uint64_t offset, std::uint64_t size,
                                                 std::uint32_t slot) = 0;
 };

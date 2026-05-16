@@ -19,15 +19,48 @@ DescriptorSet::~DescriptorSet() {}
 
 //@{ IDescriptorSet
 
-void DescriptorSet::updateCombinedTextureSamplerDescriptor(ITexture& texture, ISampler& sampler, std::uint32_t slot) {
-    const auto& binding = handle_.bindings[slot][unsigned(BindingType::SHADER_RESOURCE)];
-    const std::array image_infos{
-        VkDescriptorImageInfo{
-            .sampler = static_cast<Sampler&>(sampler).getHandle(),
-            .imageView = static_cast<Texture&>(texture).getImageView(0),
-            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        },
-    };
+void DescriptorSet::updateSamplerDescriptor(ISampler& sampler, std::uint32_t slot) {
+    const auto& binding_offsets = *handle_.binding_offsets;
+    writeImageDescriptorSet(pipeline_layout_->getBinding(binding_offsets, BindingType::SAMPLER, slot),
+                            std::array{VkDescriptorImageInfo{.sampler = static_cast<Sampler&>(sampler).getHandle()}});
+}
+
+void DescriptorSet::updateCombinedTextureSamplerDescriptor(ITexture& texture, ISampler& sampler, std::uint32_t slot,
+                                                           std::uint32_t sampler_slot) {
+    const auto& binding_offsets = *handle_.binding_offsets;
+    const auto& binding = pipeline_layout_->getBinding(binding_offsets, BindingType::SHADER_RESOURCE, slot);
+    assert(pipeline_layout_->getBinding(binding_offsets, BindingType::SAMPLER, slot).binding == binding.binding);
+    writeImageDescriptorSet(binding, std::array{VkDescriptorImageInfo{
+                                         .sampler = static_cast<Sampler&>(sampler).getHandle(),
+                                         .imageView = static_cast<Texture&>(texture).getImageView(0),
+                                         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                     }});
+}
+
+void DescriptorSet::updateShaderResourceDescriptor(ITexture& texture, std::uint32_t slot) {
+    const auto& binding_offsets = *handle_.binding_offsets;
+    writeImageDescriptorSet(pipeline_layout_->getBinding(binding_offsets, BindingType::SHADER_RESOURCE, slot),
+                            std::array{VkDescriptorImageInfo{
+                                .imageView = static_cast<Texture&>(texture).getImageView(0),
+                                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            }});
+}
+
+void DescriptorSet::updateConstantBufferDescriptor(IBuffer& buffer, std::uint64_t offset, std::uint64_t size,
+                                                   std::uint32_t slot) {
+    const auto& binding_offsets = *handle_.binding_offsets;
+    writeBufferDescriptorSet(pipeline_layout_->getBinding(binding_offsets, BindingType::CONSTANT_BUFFER, slot),
+                             std::array{VkDescriptorBufferInfo{
+                                 .buffer = static_cast<Buffer&>(buffer).getHandle(),
+                                 .offset = VkDeviceSize(offset),
+                                 .range = VkDeviceSize(size),
+                             }});
+}
+
+//@}
+
+void DescriptorSet::writeImageDescriptorSet(PipelineLayout::Binding binding,
+                                            std::span<const VkDescriptorImageInfo> image_infos) {
     device_->updateDescriptorSets(
         std::array{
             VkWriteDescriptorSet{
@@ -43,16 +76,8 @@ void DescriptorSet::updateCombinedTextureSamplerDescriptor(ITexture& texture, IS
         {});
 }
 
-void DescriptorSet::updateConstantBufferDescriptor(IBuffer& buffer, std::uint64_t offset, std::uint64_t size,
-                                                   std::uint32_t slot) {
-    const auto& binding = handle_.bindings[slot][unsigned(BindingType::CONSTANT_BUFFER)];
-    const std::array buffer_infos{
-        VkDescriptorBufferInfo{
-            .buffer = static_cast<Buffer&>(buffer).getHandle(),
-            .offset = VkDeviceSize(offset),
-            .range = VkDeviceSize(size),
-        },
-    };
+void DescriptorSet::writeBufferDescriptorSet(PipelineLayout::Binding binding,
+                                             std::span<const VkDescriptorBufferInfo> buffer_infos) {
     device_->updateDescriptorSets(
         std::array{
             VkWriteDescriptorSet{
@@ -67,5 +92,3 @@ void DescriptorSet::updateConstantBufferDescriptor(IBuffer& buffer, std::uint64_
         },
         {});
 }
-
-//@}

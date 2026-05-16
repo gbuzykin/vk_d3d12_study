@@ -353,7 +353,7 @@ bool App3DMainWindow::initScene() {
     for (auto& frame : frame_data_) {
         if (!(frame.descriptor_set = pipeline_layout_->createDescriptorSet(0))) { return false; }
         if (!(frame.cbuffer0 = device_->createBuffer(rel::BufferType::CONSTANT, sizeof(frame.cb0)))) { return false; }
-        frame.descriptor_set->updateCombinedTextureSamplerDescriptor(*texture_, *sampler_, 0);
+        frame.descriptor_set->updateCombinedTextureSamplerDescriptor(*texture_, *sampler_, 0, 0);
         frame.descriptor_set->updateConstantBufferDescriptor(*frame.cbuffer0, 0, sizeof(frame.cb0[0]), 0);
     }
 

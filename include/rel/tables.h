@@ -29,9 +29,20 @@ constexpr std::array TBL_FORMAT_ALIGNMENT{
 
 constexpr std::array TBL_DESC_BINDING_TYPE{
     // DescriptorType::
-    BindingType::SHADER_RESOURCE,  // COMBINED_TEXTURE_SAMPLER
-    BindingType::CONSTANT_BUFFER,  // CONSTANT_BUFFER
-    BindingType::CONSTANT_BUFFER,  // CONSTANT_BUFFER_DYNAMIC
+    BindingType::SAMPLER,           // SAMPLER
+    BindingType::SHADER_RESOURCE,   // COMBINED_TEXTURE_SAMPLER
+    BindingType::SHADER_RESOURCE,   // TEXTURE,
+    BindingType::SHADER_RESOURCE,   // BUFFER,
+    BindingType::UNORDERED_ACCESS,  // RW_TEXTURE,
+    BindingType::UNORDERED_ACCESS,  // RW_BUFFER,
+    BindingType::CONSTANT_BUFFER,   // CONSTANT_BUFFER
+    BindingType::CONSTANT_BUFFER,   // TEXTURE_BUFFER,
+    BindingType::SHADER_RESOURCE,   // STRUCTURED_BUFFER,
+    BindingType::UNORDERED_ACCESS,  // RW_STRUCTURED_BUFFER,
+    BindingType::CONSTANT_BUFFER,   // CONSTANT_BUFFER_DYNAMIC
+    BindingType::CONSTANT_BUFFER,   // TEXTURE_BUFFER_DYNAMIC,
+    BindingType::SHADER_RESOURCE,   // STRUCTURED_BUFFER_DYNAMIC,
+    BindingType::UNORDERED_ACCESS,  // RW_STRUCTURED_BUFFER_DYNAMIC,
 };
 
 APP3D_REL_EXPORT Format parseFormat(std::string_view fmt);

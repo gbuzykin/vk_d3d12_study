@@ -26,64 +26,89 @@ PipelineLayout::~PipelineLayout() {
 }
 
 bool PipelineLayout::create(const uxs::db::value& config) {
+    struct BindingRange {
+        std::uint32_t slot;
+        std::uint32_t count;
+        std::uint32_t binding;
+    };
+
     std::uint32_t total_max_sets = 0;
     uxs::inline_dynarray<VkDescriptorPoolSize> desc_counts;
+    uxs::inline_dynarray<VkDescriptorSetLayoutBinding> vk_bindings;
+    PerBindingType<uxs::inline_dynarray<BindingRange, 32>> binding_ranges;
 
     const auto& descriptor_set_layouts = config.value("descriptor_set_layouts");
 
     for (const auto& layout : descriptor_set_layouts.as_array()) {
-        uxs::inline_dynarray<VkDescriptorSetLayoutBinding> bindings;
         const std::uint32_t max_sets = layout.value_or<std::uint32_t>("max_sets", 8);
         total_max_sets += max_sets;
 
         const auto& list = layout.value("descriptor_list");
 
-        std::uint32_t def_binding = 0;
-        std::array<std::uint32_t, unsigned(BindingType::TOTAL_COUNT)> next_slots{};
+        vk_bindings.clear();
+        for (auto& range : binding_ranges) { range.clear(); }
 
-        const std::uint32_t binding_offset = std::uint32_t(bindings_.size());
+        std::uint32_t def_binding = 0;
+        PerBindingType<std::uint32_t> next_slots{};
 
         for (const auto& desc : list.as_array()) {
             const std::uint32_t binding = desc.value_or<std::uint32_t>("binding", def_binding);
             const auto type = parseDescriptorType(desc.value("type").as_string_view());
             const auto binding_type = TBL_DESC_BINDING_TYPE[unsigned(type)];
-            const auto vulkan_type = TBL_VK_DESC_TYPE[unsigned(type)];
+            const auto vk_type = TBL_VK_DESC_TYPE[unsigned(type)];
             const std::uint32_t slot = desc.value_or<std::uint32_t>("slot", next_slots[unsigned(binding_type)]);
             const std::uint32_t desc_count = desc.value_or<std::uint32_t>("count", 1);
+            const auto visibility = parseShaderStage(desc.value_or<const char*>("shader_visibility", "ALL"));
             def_binding = binding + 1;
 
-            setBinding(binding_type, binding_offset + slot, type, binding, desc_count);
-            next_slots[unsigned(binding_type)] = slot + desc_count;
+            if (desc_count == 0) { continue; }
+
+            const auto add_binding_range = [&binding_ranges, &next_slots, type, binding, desc_count](auto binding_type,
+                                                                                                     auto slot) {
+                binding_ranges[unsigned(binding_type)].emplace_back(
+                    BindingRange{.slot = slot, .count = desc_count, .binding = (binding << 8) | std::uint32_t(type)});
+                next_slots[unsigned(binding_type)] = slot + desc_count;
+            };
+
+            add_binding_range(binding_type, slot);
             if (type == DescriptorType::COMBINED_TEXTURE_SAMPLER) {
-                setBinding(BindingType::SAMPLER, binding_offset + slot, type, binding, desc_count);
-                next_slots[unsigned(BindingType::SAMPLER)] = slot + desc_count;
+                const std::uint32_t sampler_slot = desc.value_or<std::uint32_t>(
+                    "sampler_slot", next_slots[unsigned(BindingType::SAMPLER)]);
+                add_binding_range(BindingType::SAMPLER, sampler_slot);
             }
 
-            const auto& stages = desc.value("shader_visibility");
-            const auto visibility = parseShaderStage(desc.value_or<const char*>("shader_visibility", "ALL"));
-            bindings.emplace_back(VkDescriptorSetLayoutBinding{
+            vk_bindings.emplace_back(VkDescriptorSetLayoutBinding{
                 .binding = binding,
-                .descriptorType = vulkan_type,
+                .descriptorType = vk_type,
                 .descriptorCount = desc_count,
                 .stageFlags = VkShaderStageFlags(TBL_VK_SHADER_STAGE[unsigned(visibility)]),
             });
 
-            auto desc_counts_it = std::ranges::find_if(
-                desc_counts, [vulkan_type](const auto& item) { return item.type == vulkan_type; });
+            auto desc_counts_it = std::ranges::find_if(desc_counts,
+                                                       [vk_type](const auto& item) { return item.type == vk_type; });
             if (desc_counts_it != desc_counts.end()) {
                 desc_counts_it->descriptorCount += max_sets * desc_count;
             } else {
                 desc_counts.emplace_back(VkDescriptorPoolSize{
-                    .type = vulkan_type,
+                    .type = vk_type,
                     .descriptorCount = max_sets * desc_count,
                 });
             }
         }
 
+        auto& binding_offsets = binding_offsets_.emplace_back();
+        for (std::uint32_t n = 0; n < std::uint32_t(BindingType::TOTAL_COUNT); ++n) {
+            binding_offsets[n] = std::uint32_t(bindings_.size());
+            for (const auto& range : binding_ranges[n]) {
+                bindings_.push_back(range.binding);
+                for (std::uint32_t n = 1; n < range.count; ++n) { bindings_.push_back(-n); }
+            }
+        }
+
         const VkDescriptorSetLayoutCreateInfo create_info{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            .bindingCount = std::uint32_t(bindings.size()),
-            .pBindings = bindings.data(),
+            .bindingCount = std::uint32_t(vk_bindings.size()),
+            .pBindings = vk_bindings.data(),
         };
 
         VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
@@ -94,7 +119,6 @@ bool PipelineLayout::create(const uxs::db::value& config) {
         }
 
         set_layouts_.push_back(set_layout);
-        binding_offsets_.push_back(binding_offset);
     }
 
     const VkPipelineLayoutCreateInfo create_info{
@@ -126,7 +150,7 @@ bool PipelineLayout::obtainDescriptorSet(std::uint32_t set_layout_index, Descrip
         return false;
     }
 
-    handle.bindings = &bindings_[binding_offsets_[set_layout_index]];
+    handle.binding_offsets = &binding_offsets_[set_layout_index];
     return true;
 }
 

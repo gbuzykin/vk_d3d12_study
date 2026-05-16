@@ -17,18 +17,31 @@ class PipelineLayout : public util::ref_counter, public IPipelineLayout {
     explicit PipelineLayout(Device& device);
     ~PipelineLayout();
 
+    template<typename Ty>
+    using PerBindingType = std::array<Ty, unsigned(BindingType::TOTAL_COUNT)>;
+
     struct Binding {
         DescriptorType desc_type;
         std::uint32_t binding;
         std::uint32_t array_element;
     };
 
-    using SlotBindings = std::array<Binding, unsigned(BindingType::TOTAL_COUNT)>;
-
     struct DescriptorSetHandle {
-        const SlotBindings* bindings;
+        const PerBindingType<std::uint32_t>* binding_offsets;
         VkDescriptorSet handle;
     };
+
+    Binding getBinding(const PerBindingType<std::uint32_t>& offsets, BindingType binding_type,
+                       std::uint32_t slot) const {
+        const std::int32_t* binding = &bindings_[offsets[unsigned(binding_type)]];
+        std::uint32_t array_element = 0;
+        if (*binding < 0) { binding += *binding, array_element = std::uint32_t(-*binding); }
+        return Binding{
+            .desc_type = DescriptorType(*binding & 255),  // 0:7 - descriptor type
+            .binding = std::uint32_t(*binding >> 8),      // 8:30 - descriptor binding
+            .array_element = array_element,
+        };
+    }
 
     bool create(const uxs::db::value& config);
     bool obtainDescriptorSet(std::uint32_t set_layout_index, DescriptorSetHandle& handle);
@@ -47,16 +60,8 @@ class PipelineLayout : public util::ref_counter, public IPipelineLayout {
     VkDescriptorPool desc_pool_{VK_NULL_HANDLE};
 
     uxs::inline_dynarray<VkDescriptorSetLayout> set_layouts_;
-    uxs::inline_dynarray<std::uint32_t> binding_offsets_;
-    uxs::inline_dynarray<SlotBindings, 32> bindings_;
-
-    void setBinding(BindingType binding_type, std::uint32_t slot, DescriptorType desc_type, std::uint32_t binding,
-                    std::uint32_t count) {
-        if (slot + count > bindings_.size()) { bindings_.resize(slot + count); }
-        for (std::uint32_t n = 0; n < count; ++n) {
-            bindings_[slot + n][unsigned(binding_type)] = Binding{desc_type, binding, n};
-        }
-    }
+    uxs::inline_dynarray<PerBindingType<std::uint32_t>> binding_offsets_;
+    uxs::inline_dynarray<std::int32_t, 64> bindings_;
 
     bool createDescriptorPool(std::uint32_t total_max_sets, std::span<const VkDescriptorPoolSize> desc_counts);
 };
