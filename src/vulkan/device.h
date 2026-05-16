@@ -33,10 +33,11 @@ class Device final : public util::ref_counter, public IDevice {
                       VkPipelineStageFlags generating_stages, VkPipelineStageFlags consuming_stages,
                       VkAccessFlags current_access, VkAccessFlags new_access,
                       std::span<const VkSemaphore> signal_semaphores);
-    bool updateImage(std::span<const std::uint8_t> data, VkImage dst, VkImageSubresourceLayers subresource,
-                     VkOffset3D offset, VkExtent3D extent, VkPipelineStageFlags generating_stages,
-                     VkPipelineStageFlags consuming_stages, VkAccessFlags current_access, VkAccessFlags new_access,
-                     VkImageLayout current_layout, VkImageLayout new_layout, VkImageAspectFlags aspect,
+    bool updateImage(const std::uint8_t* data, VkImage dst, VkFormat format, std::uint32_t first_subresource,
+                     std::span<const UpdateTextureDesc> update_subresource_descs,
+                     VkPipelineStageFlags generating_stages, VkPipelineStageFlags consuming_stages,
+                     VkAccessFlags current_access, VkAccessFlags new_access, VkImageLayout current_layout,
+                     VkImageLayout new_layout, VkImageAspectFlags aspect,
                      std::span<const VkSemaphore> signal_semaphores);
 
     VkDevice operator~() { return device_; }
@@ -56,8 +57,8 @@ class Device final : public util::ref_counter, public IDevice {
                                             std::span<IShaderModule* const> shader_modules,
                                             const uxs::db::value& config) override;
     util::ref_ptr<IBuffer> createBuffer(BufferType type, std::uint64_t size) override;
-    util::ref_ptr<ITexture> createTexture(Extent3u extent) override;
-    util::ref_ptr<ISampler> createSampler() override;
+    util::ref_ptr<ITexture> createTexture(const TextureDesc& desc) override;
+    util::ref_ptr<ISampler> createSampler(const SamplerDesc& desc) override;
     //@}
 
  private:

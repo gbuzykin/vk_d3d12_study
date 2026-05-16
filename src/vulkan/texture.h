@@ -11,11 +11,9 @@ class Texture final : public FrameImageProvider, public ITexture {
     explicit Texture(Device& device);
     ~Texture() override;
 
-    bool create(VkImageType type, VkFormat format, VkExtent3D extent, std::uint32_t num_mipmaps,
-                std::uint32_t num_layers, VkImageUsageFlags usage, bool cubemap, VkImageViewType view_type);
+    bool create(const TextureDesc& desc);
 
     VkImage operator~() { return image_; }
-    VkImageView getImageView() { return image_view_; }
 
     //@{ FrameImageProvider
     VkImageView getImageView(std::uint32_t image_index) override { return image_view_; }
@@ -39,7 +37,8 @@ class Texture final : public FrameImageProvider, public ITexture {
 
     //@{ ITexture
     util::ref_counter& getRefCounter() override { return *this; }
-    bool updateTexture(std::span<const std::uint8_t> data, Vec3i offset, Extent3u extent) override;
+    bool updateTexture(const std::uint8_t* data, std::uint32_t first_subresource,
+                       std::span<const UpdateTextureDesc> update_subresource_descs) override;
     util::ref_ptr<IRenderTarget> createRenderTarget(const uxs::db::value& opts) override;
     //@}
 
