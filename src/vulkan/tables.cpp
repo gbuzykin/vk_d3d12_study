@@ -14,6 +14,13 @@ const std::unordered_map<std::string_view, VkShaderStageFlagBits> g_shader_stage
     {"VERTEX", VK_SHADER_STAGE_VERTEX_BIT},
     {"PIXEL", VK_SHADER_STAGE_FRAGMENT_BIT},
 };
+const std::unordered_map<std::string_view, VkPrimitiveTopology> g_primitive_topologies{
+    {"POINTS", VK_PRIMITIVE_TOPOLOGY_POINT_LIST},
+    {"LINES", VK_PRIMITIVE_TOPOLOGY_LINE_LIST},
+    {"LINE_STRIP", VK_PRIMITIVE_TOPOLOGY_LINE_STRIP},
+    {"TRIANGLES", VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST},
+    {"TRIANGLE_STRIP", VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP},
+};
 const std::unordered_map<std::string_view, VkFormat> g_formats{
     {"FLOAT", VK_FORMAT_R32_SFLOAT},        {"FLOAT2", VK_FORMAT_R32G32_SFLOAT},
     {"FLOAT3", VK_FORMAT_R32G32B32_SFLOAT}, {"FLOAT4", VK_FORMAT_R32G32B32A32_SFLOAT},
@@ -33,6 +40,12 @@ VkShaderStageFlagBits app3d::rel::vulkan::parseShaderStage(std::string_view stag
     auto it = g_shader_stages.find(stage);
     if (it != g_shader_stages.end()) { return it->second; }
     throw uxs::db::database_error("unknown shader stage");
+}
+
+VkPrimitiveTopology app3d::rel::vulkan::parsePrimitiveTopology(std::string_view topology) {
+    auto it = g_primitive_topologies.find(topology);
+    if (it != g_primitive_topologies.end()) { return it->second; }
+    throw uxs::db::database_error("unknown primitive topology");
 }
 
 VkFormat app3d::rel::vulkan::parseFormat(std::string_view fmt) {

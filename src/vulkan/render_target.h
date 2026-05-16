@@ -35,7 +35,7 @@ class RenderTarget final : public util::ref_counter, public IRenderTarget {
     void setViewport(const Rect& rect, float z_near, float z_far) override;
     void setScissor(const Rect& rect) override;
     void bindPipeline(IPipeline& pipeline) override;
-    void bindVertexBuffer(IBuffer& buffer, std::uint32_t offset, std::uint32_t slot) override;
+    void bindVertexBuffer(IBuffer& buffer, std::uint32_t slot, std::uint32_t stride, std::uint32_t offset) override;
     void bindDescriptorSet(IDescriptorSet& descriptor_set, std::uint32_t set_index) override;
     void setPrimitiveTopology(PrimitiveTopology topology) override;
     void drawGeometry(std::uint32_t vertex_count, std::uint32_t instance_count, std::uint32_t first_vertex,

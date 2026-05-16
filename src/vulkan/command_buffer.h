@@ -59,6 +59,13 @@ class CommandBuffer {
                                buffers.data<1>());
     }
 
+    void bindVertexBuffers2(
+        std::uint32_t first_binding,
+        util::multispan<const VkBuffer, const VkDeviceSize, const VkDeviceSize, const VkDeviceSize> buffers) {
+        vkCmdBindVertexBuffers2EXT(command_buffer_, first_binding, std::uint32_t(buffers.size()), buffers.data<0>(),
+                                   buffers.data<1>(), buffers.data<2>(), buffers.data<3>());
+    }
+
     void bindDescriptorSets(VkPipelineBindPoint pipeline_type, VkPipelineLayout pipeline_layout,
                             std::uint32_t first_set_index, std::span<const VkDescriptorSet> descriptor_sets,
                             std::span<const std::uint32_t> dynamic_offsets) {

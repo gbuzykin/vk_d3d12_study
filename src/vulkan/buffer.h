@@ -13,6 +13,8 @@ class Buffer : public util::ref_counter, public IBuffer {
     explicit Buffer(Device& device);
     ~Buffer() override;
 
+    VkDeviceSize getSize() const { return size_; }
+
     bool create(BufferType type, VkDeviceSize size);
 
     VkBuffer operator~() { return buffer_; }
