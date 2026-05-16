@@ -82,9 +82,16 @@ struct Mat4f {
     static Mat4f perspective(float ratio, float fov, float near, float far) {
         const float f = 1.0f / std::tan(deg2rad(0.5f * fov));
         return {{{f / ratio, 0.f, 0.f, 0.f},
-                 {0.f, -f, 0.f, 0.f},
+                 {0.f, f, 0.f, 0.f},
                  {0.f, 0.f, far / (near - far), -1.f},
                  {0.f, 0.f, near * far / (near - far), 0.f}}};
+    }
+
+    constexpr Mat4f transpose() const {
+        return {{{m[0][0], m[1][0], m[2][0], m[3][0]},
+                 {m[0][1], m[1][1], m[2][1], m[3][1]},
+                 {m[0][2], m[1][2], m[2][2], m[3][2]},
+                 {m[0][3], m[1][3], m[2][3], m[3][3]}}};
     }
 
     constexpr operator Mat3f() const {

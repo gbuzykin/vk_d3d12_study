@@ -27,6 +27,7 @@ class RenderTarget final : public util::ref_counter, public IRenderTarget {
     util::ref_counter& getRefCounter() override { return *this; }
     Extent2u getImageExtent() const override { return {.width = image_extent_.width, .height = image_extent_.height}; }
     std::uint32_t getFifCount() const override { return std::uint32_t(frame_render_kits_.size()); }
+    bool isInvertedNdcY() const override { return true; }
     RenderTargetResult beginRenderTarget(const Color4f& clear_color, float depth, std::uint32_t stencil) override;
     bool endRenderTarget() override;
     void setViewport(const Rect& rect, float z_near, float z_far) override;

@@ -1,12 +1,15 @@
 #include "image_loader.h"
 #include "main_window.h"
+#include "model_loader.h"
 
 #include "common/dynamic_library.h"
 #include "common/logger.h"
 #include "interfaces/i_rendering_driver.h"
+#include "rel/camera.h"
 #include "util/range_helpers.h"
 
 #include <uxs/db/json.h>
+#include <uxs/dynarray.h>
 #include <uxs/io/filebuf.h>
 #include <uxs/io/iostate.h>
 
@@ -48,6 +51,11 @@ class Timer {
     double last_resume_time_ = 0.f;
     double current_ = 0.f;
     double delta_ = 0.f;
+};
+
+struct CB0 {
+    rel::Mat4f mvp;
+    rel::Mat3f mv;
 };
 
 class App3DMainWindow final : public MainWindow {
@@ -110,12 +118,36 @@ class App3DMainWindow final : public MainWindow {
         if (!recreateSwapChain()) { terminate(-1); }
     }
 
+    void onMouseButtonEvent(KeyCode button, bool state, std::int32_t x, std::int32_t y) override {
+        if (button != KeyCode::MOUSE_LBUTTON && button != KeyCode::MOUSE_MBUTTON) { return; }
+        if (state) {
+            rel::Vec2f p{float(x - .5f * viewport_extent_.width) / viewport_extent_.height,
+                         float(.5f * viewport_extent_.height - y) / viewport_extent_.height};
+            manipulator_.startDragging(p, button == KeyCode::MOUSE_LBUTTON ?
+                                              rel::OrbitCameraManipulator::DragAction::ROTATE :
+                                              rel::OrbitCameraManipulator::DragAction::MOVE);
+        } else {
+            manipulator_.stopDragging();
+        }
+    }
+
+    void onMouseMove(std::int32_t x, std::int32_t y, std::uint8_t button_mask) override {
+        rel::Vec2f p{float(x - .5f * viewport_extent_.width) / viewport_extent_.height,
+                     float(.5f * viewport_extent_.height - y) / viewport_extent_.height};
+        manipulator_.drag(p);
+    }
+
+    void onMouseWheel(float distance, std::int32_t x, std::int32_t y, std::uint8_t button_mask) override {
+        manipulator_.moveZ(.2f * distance);
+    }
+
  private:
     std::uint64_t frame_counter_ = 0;
     std::chrono::high_resolution_clock::time_point time_fps_last_{};
     Timer timer_;
     bool is_window_minimized_ = false;
     bool is_window_sizing_or_moving_ = false;
+    bool is_inverted_y_ndc_ = false;
     rel::Extent2u viewport_extent_{};
 
     util::ref_ptr<rel::IRenderingDriver> driver_;
@@ -134,8 +166,21 @@ class App3DMainWindow final : public MainWindow {
     util::ref_ptr<rel::IPipeline> pipeline_;
     util::ref_ptr<rel::ITexture> texture_;
     util::ref_ptr<rel::ISampler> sampler_;
-    util::ref_ptr<rel::IDescriptorSet> descriptor_set_;
     util::ref_ptr<rel::IBuffer> vertex_buffer_;
+
+    struct FrameData {
+        util::ref_ptr<rel::IDescriptorSet> descriptor_set;
+        util::ref_ptr<rel::IBuffer> cbuffer0;
+        CB0 cb0;
+    };
+
+    std::uint32_t n_frame_ = 0;
+    uxs::inline_dynarray<FrameData, 3> frame_data_;
+
+    Image image_;
+    Model model_;
+    rel::Camera camera_;
+    rel::OrbitCameraManipulator manipulator_{camera_};
 
     bool needToSuspendTime() const { return is_window_minimized_ || is_window_sizing_or_moving_; }
 
@@ -148,6 +193,7 @@ class App3DMainWindow final : public MainWindow {
 
     util::ref_ptr<rel::IShaderModule> compileShaderModule(const char* filename, const char* target);
     bool initScene();
+    void updateMatrices(CB0& cb0);
     bool renderScene();
 };
 
@@ -193,6 +239,7 @@ int App3DMainWindow::init(int argc, char** argv) {
     if (!(swap_chain_ = device_->createSwapChain(*surface_, swap_chain_opts_))) { return -1; }
 
     if (!(render_target_ = swap_chain_->createRenderTarget(JSON({"use_depth" : true})))) { return -1; }
+    is_inverted_y_ndc_ = render_target_->isInvertedNdcY();
     viewport_extent_ = render_target_->getImageExtent();
 
     if (!initScene()) { return -1; }
@@ -231,10 +278,10 @@ util::ref_ptr<rel::IShaderModule> App3DMainWindow::compileShaderModule(const cha
 }
 
 bool App3DMainWindow::initScene() {
-    vertex_shader_module_ = compileShaderModule("data/shaders/sampler/vert.hlsl", "vs_6_0");
+    vertex_shader_module_ = compileShaderModule("data/shaders/transform/vert.hlsl", "vs_6_0");
     if (!vertex_shader_module_) { return false; }
 
-    pixel_shader_module_ = compileShaderModule("data/shaders/sampler/pix.hlsl", "ps_6_0");
+    pixel_shader_module_ = compileShaderModule("data/shaders/transform/pix.hlsl", "ps_6_0");
     if (!pixel_shader_module_) { return false; }
 
     const auto pipeline_layout_config = JSON({
@@ -256,6 +303,7 @@ bool App3DMainWindow::initScene() {
         "vertex_layouts" : [ {
             "attributes" : [
                 {"name" : "POSITION", "format" : "FLOAT3"},  //
+                {"name" : "NORMAL", "format" : "FLOAT3"},    //
                 {"name" : "TEXCOORD", "format" : "FLOAT2"}   //
             ]
         } ]
@@ -267,16 +315,15 @@ bool App3DMainWindow::initScene() {
         return false;
     }
 
-    Image image;
-    if (!loadImageFromFile("data/images/sunset.jpg", image, 4)) { return false; }
+    if (!loadImageFromFile("data/images/sunset.jpg", image_, 4)) { return false; }
 
     const rel::TextureDesc texture_desc{
-        .extent = {.width = image.width, .height = image.height, .depth = 1},
+        .extent = {.width = image_.width, .height = image_.height, .depth = 1},
     };
 
     if (!(texture_ = device_->createTexture(texture_desc))) { return false; }
 
-    if (!texture_->updateTexture(image.data.data(), 0,
+    if (!texture_->updateTexture(image_.data.data(), 0,
                                  std::array{rel::UpdateTextureDesc{.image_extent = texture_desc.extent}})) {
         return false;
     }
@@ -289,24 +336,46 @@ bool App3DMainWindow::initScene() {
         return false;
     }
 
-    if (!(descriptor_set_ = pipeline_layout_->createDescriptorSet(0))) { return false; }
-    descriptor_set_->updateCombinedTextureSamplerDescriptor(*texture_, *sampler_, 0);
-
-    const std::vector<float> vertices{
-        -0.75f, -0.75f, 0.0f, 0.0f, 0.0f, -0.75f, 0.75f, 0.0f, 0.0f, 1.0f,
-        0.75f,  -0.75f, 0.0f, 1.0f, 0.0f, 0.75f,  0.75f, 0.0f, 1.0f, 1.0f,
-    };
-
-    if (!(vertex_buffer_ = device_->createBuffer(rel::BufferType::VERTEX, sizeof(vertices[0]) * vertices.size()))) {
+    frame_data_.resize(render_target_->getFifCount());
+    if (frame_data_.empty()) {
+        logError("bad render target");
         return false;
     }
 
-    if (!vertex_buffer_->updateBuffer(util::as_byte_span(vertices), 0)) { return false; }
+    for (auto& frame : frame_data_) {
+        if (!(frame.descriptor_set = pipeline_layout_->createDescriptorSet(0))) { return false; }
+        if (!(frame.cbuffer0 = device_->createBuffer(rel::BufferType::CONSTANT, sizeof(frame.cb0)))) { return false; }
+        frame.descriptor_set->updateCombinedTextureSamplerDescriptor(*texture_, *sampler_, 0);
+        frame.descriptor_set->updateConstantBufferDescriptor(*frame.cbuffer0, 0);
+    }
+
+    if (!loadModelFromObjFile("data/models/knot.obj",
+                              LoadModelFlags::LOAD_NORMALS | LoadModelFlags::LOAD_TEXCOORDS | LoadModelFlags::UNIFY,
+                              model_)) {
+        return false;
+    }
+
+    if (!(vertex_buffer_ = device_->createBuffer(rel::BufferType::VERTEX, util::as_byte_span(model_.data).size()))) {
+        return false;
+    }
+
+    if (!vertex_buffer_->updateBuffer(util::as_byte_span(model_.data), 0)) { return false; }
 
     return true;
 }
 
+void App3DMainWindow::updateMatrices(CB0& cb0) {
+    const auto m = rel::Mat4f::rotate(5.f * timer_.getCurrent(), {0.f, 1.f, 0.f});
+    const auto mv = m * rel::Mat4f::lookAt(camera_.eye, camera_.center, camera_.up);
+    auto p = rel::Mat4f::perspective(float(viewport_extent_.width) / viewport_extent_.height, 50.0f, 0.5f, 50.0f);
+    if (is_inverted_y_ndc_) { p.m[1][1] = -p.m[1][1]; }
+    cb0.mv = rel::Mat3f(mv);
+    cb0.mvp = mv * p;
+}
+
 bool App3DMainWindow::renderScene() {
+    auto& frame = frame_data_[n_frame_];
+
     const auto result = render_target_->beginRenderTarget({0.1f, 0.2f, 0.3f, 1.0f}, 1.0f, 0);
     if (result == rel::RenderTargetResult::SUBOPTIMAL || result == rel::RenderTargetResult::OUT_OF_DATE) {
         if (!recreateSwapChain()) { return false; }
@@ -317,16 +386,19 @@ bool App3DMainWindow::renderScene() {
 
     render_target_->bindPipeline(*pipeline_);
 
-    render_target_->bindDescriptorSet(*descriptor_set_, 0);
-
     render_target_->bindVertexBuffer(*vertex_buffer_, 0, 0);
 
-    render_target_->setPrimitiveTopology(rel::PrimitiveTopology::TRIANGLE_STRIP);
+    render_target_->bindDescriptorSet(*frame.descriptor_set, 0);
 
-    render_target_->drawGeometry(4, 1, 0, 0);
+    render_target_->setPrimitiveTopology(rel::PrimitiveTopology::TRIANGLES);
+    for (const auto& part : model_.parts) { render_target_->drawGeometry(part.count, 1, part.offset, 0); }
+
+    updateMatrices(frame.cb0);
+    if (!frame.cbuffer0->updateBuffer(util::as_byte_span(std::span{&frame.cb0, 1}), 0)) { return false; }
 
     if (!render_target_->endRenderTarget()) { return false; }
 
+    if (++n_frame_ == frame_data_.size()) { n_frame_ = 0; }
     return true;
 }
 
