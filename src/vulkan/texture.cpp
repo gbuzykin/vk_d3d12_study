@@ -26,12 +26,12 @@ bool Texture::create(const TextureDesc& desc) {
     const std::uint32_t num_mipmaps = 1;
     const std::uint32_t num_layers = 1;
     const bool cubemap = false;
-    const VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT | (!!(desc.flags & TextureFlags::RENDER_TARGET) ?
-                                                                      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT :
-                                                                      VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 
     image_format_ = VK_FORMAT_R8G8B8A8_UNORM;
     image_extent_ = {.width = desc.extent.width, .height = desc.extent.height, .depth = 1};
+    image_usage_ = VK_IMAGE_USAGE_SAMPLED_BIT |
+                   (!!(desc.flags & TextureFlags::RENDER_TARGET) ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT :
+                                                                   VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 
     VkFormatProperties format_properties;
     vkGetPhysicalDeviceFormatProperties(~device_->getPhysicalDevice(), image_format_, &format_properties);
@@ -56,7 +56,7 @@ bool Texture::create(const TextureDesc& desc) {
         .arrayLayers = cubemap ? 6 * num_layers : num_layers,
         .samples = VK_SAMPLE_COUNT_1_BIT,
         .tiling = VK_IMAGE_TILING_OPTIMAL,
-        .usage = usage,
+        .usage = image_usage_,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };

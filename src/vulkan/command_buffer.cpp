@@ -36,9 +36,17 @@ bool CommandBuffer::endCommandBuffer() {
 }
 
 void CommandBuffer::beginRenderPass(VkRenderPass render_pass, VkFramebuffer framebuffer, VkRect2D render_area,
-                                    std::span<const VkClearValue> clear_values, VkSubpassContents subpass_contents) {
-    const VkRenderPassBeginInfo pass_begin_info{
+                                    VkSubpassContents subpass_contents, std::span<const VkClearValue> clear_values,
+                                    std::span<const VkImageView> attachments) {
+    const VkRenderPassAttachmentBeginInfo attachments_begin_info{
+        .sType = VK_STRUCTURE_TYPE_RENDER_PASS_ATTACHMENT_BEGIN_INFO,
+        .attachmentCount = std::uint32_t(attachments.size()),
+        .pAttachments = attachments.data(),
+    };
+
+    const VkRenderPassBeginInfo render_pass_begin_info{
         .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+        .pNext = &attachments_begin_info,
         .renderPass = render_pass,
         .framebuffer = framebuffer,
         .renderArea = render_area,
@@ -46,5 +54,5 @@ void CommandBuffer::beginRenderPass(VkRenderPass render_pass, VkFramebuffer fram
         .pClearValues = clear_values.data(),
     };
 
-    vkCmdBeginRenderPass(command_buffer_, &pass_begin_info, subpass_contents);
+    vkCmdBeginRenderPass(command_buffer_, &render_pass_begin_info, subpass_contents);
 }

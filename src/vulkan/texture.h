@@ -23,6 +23,7 @@ class Texture final : public FrameImageProvider, public ITexture {
     VkExtent2D getImageExtent() const override {
         return {.width = image_extent_.width, .height = image_extent_.height};
     }
+    VkImageUsageFlags getImageUsage() const override { return image_usage_; }
     VkPipelineStageFlags getImageConsumingStages() const override;
     VkAccessFlags getImageAccess() const override;
     VkImageLayout getImageLayout() const override;
@@ -44,8 +45,9 @@ class Texture final : public FrameImageProvider, public ITexture {
 
  private:
     util::ref_ptr<Device> device_;
-    VkExtent3D image_extent_{};
     VkFormat image_format_{};
+    VkExtent3D image_extent_{};
+    VkPipelineStageFlags image_usage_{};
     VkImage image_{VK_NULL_HANDLE};
     VmaAllocation allocation_{VK_NULL_HANDLE};
     VkImageView image_view_{VK_NULL_HANDLE};

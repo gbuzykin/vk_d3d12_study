@@ -121,6 +121,8 @@ bool SwapChain::create(const uxs::db::value& opts) {
 
 VkFormat SwapChain::getImageFormat() const { return surface_->getImageFormat().format; }
 
+VkImageUsageFlags SwapChain::getImageUsage() const { return surface_->getImageUsage(); }
+
 VkPipelineStageFlags SwapChain::getImageConsumingStages() const { return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT; }
 
 VkAccessFlags SwapChain::getImageAccess() const { return VK_ACCESS_MEMORY_READ_BIT; }
