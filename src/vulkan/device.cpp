@@ -231,8 +231,8 @@ bool Device::create(const uxs::db::value& caps) {
 }
 
 bool Device::createSemaphore(VkSemaphore& semaphore) {
-    const VkSemaphoreCreateInfo create_info{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-    VkResult result = vkCreateSemaphore(&create_info, nullptr, &semaphore);
+    VkResult result = vkCreateSemaphore(
+        constAddressOf(VkSemaphoreCreateInfo{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO}), nullptr, &semaphore);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create semaphore: {}", result);
         return false;
@@ -241,12 +241,11 @@ bool Device::createSemaphore(VkSemaphore& semaphore) {
 }
 
 bool Device::createFence(bool signaled, VkFence& fence) {
-    const VkFenceCreateInfo create_info{
-        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-        .flags = signaled ? VK_FENCE_CREATE_SIGNALED_BIT : 0u,
-    };
-
-    VkResult result = vkCreateFence(&create_info, nullptr, &fence);
+    VkResult result = vkCreateFence(constAddressOf(VkFenceCreateInfo{
+                                        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+                                        .flags = signaled ? VK_FENCE_CREATE_SIGNALED_BIT : 0u,
+                                    }),
+                                    nullptr, &fence);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create fence: {}", result);
         return false;
@@ -507,19 +506,18 @@ bool Device::createStagingBuffer(VkDeviceSize size, StagingBuffer& buffer) {
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
 
-    const VmaAllocationCreateInfo alloc_info{
-        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
-        .usage = VMA_MEMORY_USAGE_AUTO,
-    };
-
     if (buffer.handle != VK_NULL_HANDLE) {
         vmaDestroyBuffer(allocator_, buffer.handle, buffer.allocation);
         buffer.handle = VK_NULL_HANDLE;
         buffer.allocation = VK_NULL_HANDLE;
     }
 
-    VkResult result = vmaCreateBuffer(allocator_, &create_info, &alloc_info, &buffer.handle, &buffer.allocation,
-                                      nullptr);
+    VkResult result = vmaCreateBuffer(allocator_, &create_info,
+                                      constAddressOf(VmaAllocationCreateInfo{
+                                          .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
+                                          .usage = VMA_MEMORY_USAGE_AUTO,
+                                      }),
+                                      &buffer.handle, &buffer.allocation, nullptr);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create buffer: {}", result);
         return false;

@@ -30,12 +30,9 @@ bool Buffer::create(BufferType type, VkDeviceSize size) {
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
 
-    const VmaAllocationCreateInfo alloc_info{
-        .usage = VMA_MEMORY_USAGE_AUTO,
-    };
-
-    VkResult result = vmaCreateBuffer(device_->getAllocator(), &create_info, &alloc_info, &buffer_, &allocation_,
-                                      nullptr);
+    VkResult result = vmaCreateBuffer(device_->getAllocator(), &create_info,
+                                      constAddressOf(VmaAllocationCreateInfo{.usage = VMA_MEMORY_USAGE_AUTO}), &buffer_,
+                                      &allocation_, nullptr);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create buffer: {}", result);
         return false;

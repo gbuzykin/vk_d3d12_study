@@ -155,9 +155,8 @@ bool RenderTarget::createFrameResources() {
                 .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
             };
 
-            const VmaAllocationCreateInfo alloc_info{.usage = VMA_MEMORY_USAGE_AUTO};
-
-            VkResult result = vmaCreateImage(device_->getAllocator(), &create_info, &alloc_info,
+            VkResult result = vmaCreateImage(device_->getAllocator(), &create_info,
+                                             constAddressOf(VmaAllocationCreateInfo{.usage = VMA_MEMORY_USAGE_AUTO}),
                                              &kit.depth_stencil_image, &kit.depth_stencil_allocation, nullptr);
             if (result != VK_SUCCESS) {
                 logError(LOG_VK "couldn't create depth&stencil image: {}", result);

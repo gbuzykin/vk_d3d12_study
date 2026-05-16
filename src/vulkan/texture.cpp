@@ -61,9 +61,9 @@ bool Texture::create(const TextureDesc& desc) {
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
 
-    const VmaAllocationCreateInfo alloc_info{.usage = VMA_MEMORY_USAGE_AUTO};
-
-    VkResult result = vmaCreateImage(device_->getAllocator(), &create_info, &alloc_info, &image_, &allocation_, nullptr);
+    VkResult result = vmaCreateImage(device_->getAllocator(), &create_info,
+                                     constAddressOf(VmaAllocationCreateInfo{.usage = VMA_MEMORY_USAGE_AUTO}), &image_,
+                                     &allocation_, nullptr);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create image: {}", result);
         return false;
