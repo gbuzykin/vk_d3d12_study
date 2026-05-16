@@ -19,11 +19,12 @@ SwapChain::SwapChain(Device& device, Surface& surface)
     : device_(util::not_null{&device}), surface_(util::not_null{&surface}) {}
 
 SwapChain::~SwapChain() {
-    for (auto& kit : submit_kits_) {
+    for (std::uint32_t n = 0; n < std::uint32_t(submit_kits_.size()); ++n) {
+        auto& kit = submit_kits_[n];
         device_->vkDestroySemaphore(kit.sem_image_acquired, nullptr);
         device_->vkDestroySemaphore(kit.sem_rendering_complete, nullptr);
         device_->vkDestroySemaphore(kit.sem_ready_to_present, nullptr);
-        surface_->getPresentQueue().releaseCommandBuffer(kit.present_command_buffer);
+        surface_->getPresentQueue().releaseCommandBuffer(n, kit.present_command_buffer);
     }
     destroyImageViews();
     device_->vkDestroySwapchainKHR(swap_chain_, nullptr);
@@ -128,13 +129,14 @@ bool SwapChain::create(const uxs::db::value& opts) {
     const std::uint32_t new_summit_kit_count = std::max(getFifCount(), image_count);
     if (new_summit_kit_count > old_summit_kit_count) {
         submit_kits_.resize(new_summit_kit_count);
+        surface_->getPresentQueue().growCommandPoolCount(new_summit_kit_count);
         for (std::uint32_t n = old_summit_kit_count; n < new_summit_kit_count; ++n) {
             auto& kit = submit_kits_[n];
             if (!device_->createSemaphore(kit.sem_image_acquired)) { return false; }
             if (!device_->createSemaphore(kit.sem_rendering_complete)) { return false; }
             if (surface_->getPresentQueue().getFamilyIndex() != device_->getGraphicsQueue().getFamilyIndex()) {
                 if (!device_->createSemaphore(kit.sem_ready_to_present)) { return false; }
-                if (!surface_->getPresentQueue().obtainCommandBuffer(kit.present_command_buffer)) { return false; }
+                if (!surface_->getPresentQueue().obtainCommandBuffer(n, kit.present_command_buffer)) { return false; }
             }
         }
     }
@@ -227,9 +229,9 @@ RenderTargetResult SwapChain::submitFrameImage(std::uint32_t image_index, Comman
     if (queue_family_transition) {
         auto& present_command_buffer = kit.present_command_buffer;
 
-        if (!present_command_buffer.beginCommandBuffer(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) {
-            return RenderTargetResult::FAILED;
-        }
+        if (!surface_->getPresentQueue().resetCommandPool(n_image_)) { return RenderTargetResult::FAILED; }
+
+        if (!present_command_buffer.beginCommandBuffer(0, nullptr)) { return RenderTargetResult::FAILED; }
 
         present_command_buffer.setImageMemoryBarrier(
             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,

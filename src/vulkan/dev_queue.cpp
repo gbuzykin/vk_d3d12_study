@@ -12,7 +12,7 @@ using namespace app3d::rel::vulkan;
 // --------------------------------------------------------
 // DevQueue class implementation
 
-bool DevQueue::create(Device& device) {
+bool DevQueue::create(Device& device, std::uint32_t command_pool_count) {
     if (family_index_ == INVALID_UINT32_VALUE) {
         logError(LOG_VK "no selected queue family");
         return false;
@@ -21,28 +21,49 @@ bool DevQueue::create(Device& device) {
     device_ = &device;
     device_->vkGetDeviceQueue(family_index_, 0, &queue_);
 
-    const VkCommandPoolCreateInfo create_info{
-        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-        .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-        .queueFamilyIndex = family_index_,
-    };
+    return growCommandPoolCount(command_pool_count);
+}
 
-    VkResult result = device_->vkCreateCommandPool(&create_info, nullptr, &command_pool_);
-    if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't create command pool: {}", result);
-        return false;
+bool DevQueue::growCommandPoolCount(std::uint32_t command_pool_count) {
+    const std::uint32_t old_command_pool_count = std::uint32_t(cmd_pools_.size());
+    if (command_pool_count <= old_command_pool_count) { return true; }
+
+    cmd_pools_.resize(command_pool_count);
+
+    for (std::uint32_t n = old_command_pool_count; n < command_pool_count; ++n) {
+        VkResult result = device_->vkCreateCommandPool(constAddressOf(VkCommandPoolCreateInfo{
+                                                           .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+                                                           .queueFamilyIndex = family_index_,
+                                                       }),
+                                                       nullptr, &cmd_pools_[n].command_pool_);
+        if (result != VK_SUCCESS) {
+            logError(LOG_VK "couldn't create command pool: {}", result);
+            return false;
+        }
+
+        cmd_pools_[n].allocated_command_buffers_.reserve(16);
     }
 
-    allocated_command_buffers_.reserve(16);
+    return true;
+}
+
+bool DevQueue::resetCommandPool(std::uint32_t command_pool_index) {
+    VkResult result = device_->vkResetCommandPool(cmd_pools_[command_pool_index].command_pool_, 0);
+    if (result != VK_SUCCESS) {
+        logError(LOG_VK "couldn't reset command pool: {}", result);
+        return false;
+    }
     return true;
 }
 
 void DevQueue::destroy() {
     if (!device_) { return; }
-    device_->vkDestroyCommandPool(command_pool_, nullptr);
-    command_pool_ = VK_NULL_HANDLE;
-    allocated_command_buffers_.clear();
-    used_command_buffer_count_ = 0;
+    for (auto& cmd_pool : cmd_pools_) {
+        device_->vkDestroyCommandPool(cmd_pool.command_pool_, nullptr);
+        cmd_pool.command_pool_ = VK_NULL_HANDLE;
+        cmd_pool.allocated_command_buffers_.clear();
+        cmd_pool.used_command_buffer_count_ = 0;
+    }
 }
 
 bool DevQueue::submitCommandBuffers(util::multispan<const VkSemaphore, const VkPipelineStageFlags> wait_semaphore_infos,
@@ -86,41 +107,39 @@ RenderTargetResult DevQueue::presentImages(std::span<const VkSemaphore> wait_sem
     return RenderTargetResult::FAILED;
 }
 
-bool DevQueue::obtainCommandBuffer(CommandBuffer& command_buffer) {
-    if (used_command_buffer_count_ == allocated_command_buffers_.size()) {
-        allocated_command_buffers_.resize(allocated_command_buffers_.size() + 5, VK_NULL_HANDLE);
+bool DevQueue::obtainCommandBuffer(std::uint32_t command_pool_index, CommandBuffer& command_buffer) {
+    auto& cmd_pool = cmd_pools_[command_pool_index];
+    if (cmd_pool.used_command_buffer_count_ == cmd_pool.allocated_command_buffers_.size()) {
+        cmd_pool.allocated_command_buffers_.resize(cmd_pool.allocated_command_buffers_.size() + 5, VK_NULL_HANDLE);
 
         const VkCommandBufferAllocateInfo allocate_info{
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-            .commandPool = command_pool_,
+            .commandPool = cmd_pool.command_pool_,
             .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-            .commandBufferCount = std::uint32_t(allocated_command_buffers_.size()) - used_command_buffer_count_,
+            .commandBufferCount = std::uint32_t(cmd_pool.allocated_command_buffers_.size()) -
+                                  cmd_pool.used_command_buffer_count_,
         };
 
         VkResult result = device_->vkAllocateCommandBuffers(
-            &allocate_info, allocated_command_buffers_.data() + used_command_buffer_count_);
+            &allocate_info, cmd_pool.allocated_command_buffers_.data() + cmd_pool.used_command_buffer_count_);
         if (result != VK_SUCCESS) {
             logError(LOG_VK "couldn't allocate command buffers: {}", result);
             return false;
         }
     }
 
-    command_buffer = CommandBuffer(device_->getVkFuncs(), allocated_command_buffers_[used_command_buffer_count_++]);
-
-    VkResult result = command_buffer.vkResetCommandBuffer(0);
-    if (result != VK_SUCCESS) {
-        logError(LOG_VK "couldn't free command buffers: {}", result);
-        return false;
-    }
+    command_buffer = CommandBuffer(device_->getVkFuncs(),
+                                   cmd_pool.allocated_command_buffers_[cmd_pool.used_command_buffer_count_++]);
 
     return true;
 }
 
-void DevQueue::releaseCommandBuffer(CommandBuffer& command_buffer) {
+void DevQueue::releaseCommandBuffer(std::uint32_t command_pool_index, CommandBuffer& command_buffer) {
+    auto& cmd_pool = cmd_pools_[command_pool_index];
     if (command_buffer.getHandle() == VK_NULL_HANDLE) { return; }
-    auto found_it = std::ranges::find(allocated_command_buffers_, command_buffer.getHandle());
-    if (found_it == allocated_command_buffers_.end()) { return; }
-    std::copy(found_it + 1, allocated_command_buffers_.end(), found_it);
-    allocated_command_buffers_.back() = command_buffer.getHandle();
-    --used_command_buffer_count_;
+    auto found_it = std::ranges::find(cmd_pool.allocated_command_buffers_, command_buffer.getHandle());
+    if (found_it == cmd_pool.allocated_command_buffers_.end()) { return; }
+    std::copy(found_it + 1, cmd_pool.allocated_command_buffers_.end(), found_it);
+    cmd_pool.allocated_command_buffers_.back() = command_buffer.getHandle();
+    --cmd_pool.used_command_buffer_count_;
 }

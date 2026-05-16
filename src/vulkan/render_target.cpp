@@ -21,19 +21,25 @@ RenderTarget::RenderTarget(Device& device, FrameImageProvider& image_provider)
 RenderTarget::~RenderTarget() {
     frame_image_provider_->removeRenderTarget(this);
     destroyFrameResources();
-    for (auto& kit : frame_render_kits_) {
+    for (std::uint32_t n = 0; n < std::uint32_t(frame_render_kits_.size()); ++n) {
+        auto& kit = frame_render_kits_[n];
         device_->vkDestroyFence(kit.fence, nullptr);
-        device_->getGraphicsQueue().releaseCommandBuffer(kit.command_buffer);
+        device_->getGraphicsQueue().releaseCommandBuffer(n, kit.command_buffer);
     }
     device_->vkDestroyRenderPass(render_pass_, nullptr);
 }
 
 bool RenderTarget::create(const uxs::db::value& opts) {
     use_depth_ = opts.value<bool>("use_depth");
-    frame_render_kits_.resize(frame_image_provider_->getFifCount());
-    for (auto& kit : frame_render_kits_) {
+
+    const std::uint32_t fif_count = frame_image_provider_->getFifCount();
+
+    frame_render_kits_.resize(fif_count);
+    device_->getGraphicsQueue().growCommandPoolCount(fif_count);
+    for (std::uint32_t n = 0; n < fif_count; ++n) {
+        auto& kit = frame_render_kits_[n];
         if (!device_->createFence(true, kit.fence)) { return false; }
-        if (!device_->getGraphicsQueue().obtainCommandBuffer(kit.command_buffer)) { return false; }
+        if (!device_->getGraphicsQueue().obtainCommandBuffer(n, kit.command_buffer)) { return false; }
     }
 
     image_format_ = frame_image_provider_->getImageFormat();
@@ -249,13 +255,13 @@ RenderTargetResult RenderTarget::beginRenderTarget(const Color4f& clear_color, f
         return RenderTargetResult::FAILED;
     }
 
+    if (!device_->getGraphicsQueue().resetCommandPool(n_frame_)) { return RenderTargetResult::FAILED; }
+
     current_image_index_ = 0;
     render_target_status_ = frame_image_provider_->acquireFrameImage(ACQUIRE_FRAME_IMAGE_TIMEOUT, current_image_index_);
     if (render_target_status_ > RenderTargetResult::SUBOPTIMAL) { return render_target_status_; }
 
-    if (!kit.command_buffer.beginCommandBuffer(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) {
-        return RenderTargetResult::FAILED;
-    }
+    if (!kit.command_buffer.beginCommandBuffer(0, nullptr)) { return RenderTargetResult::FAILED; }
 
     frame_image_provider_->imageBarrierBefore(kit.command_buffer, current_image_index_);
 

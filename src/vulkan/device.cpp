@@ -214,17 +214,17 @@ bool Device::create(const uxs::db::value& caps) {
         return false;
     }
 
-    if (!graphics_queue_.create(*this)) { return false; }
-    if (!compute_queue_.create(*this)) { return false; }
-    if (!transfer_queue_.create(*this)) { return false; }
+    if (!graphics_queue_.create(*this, 0)) { return false; }
+    if (!compute_queue_.create(*this, 0)) { return false; }
+    if (!transfer_queue_.create(*this, TRANSFER_KIT_COUNT)) { return false; }
     for (auto* surface : instance_->getSurfaces()) {
-        if (!surface->getPresentQueue().create(*this)) { return false; }
+        if (!surface->getPresentQueue().create(*this, 0)) { return false; }
     }
 
     transfer_kits_.resize(TRANSFER_KIT_COUNT);
-    for (auto& kit : transfer_kits_) {
-        if (!transfer_queue_.obtainCommandBuffer(kit.command_buffer)) { return false; }
-        if (!createFence(true, kit.fence)) { return false; }
+    for (std::uint32_t n = 0; n < TRANSFER_KIT_COUNT; ++n) {
+        if (!transfer_queue_.obtainCommandBuffer(n, transfer_kits_[n].command_buffer)) { return false; }
+        if (!createFence(true, transfer_kits_[n].fence)) { return false; }
     }
 
     return true;
@@ -290,7 +290,9 @@ bool Device::updateBuffer(std::span<const std::uint8_t> data, VkBuffer dst, VkDe
         return false;
     }
 
-    if (!kit.command_buffer.beginCommandBuffer(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) { return false; }
+    if (!transfer_queue_.resetCommandPool(current_transfer_kit_)) { return false; }
+
+    if (!kit.command_buffer.beginCommandBuffer(0, nullptr)) { return false; }
 
     kit.command_buffer.setBufferMemoryBarrier(generating_stages, VK_PIPELINE_STAGE_TRANSFER_BIT,
                                               std::array{
@@ -371,7 +373,9 @@ bool Device::updateImage(const std::uint8_t* data, VkImage dst, Format format, s
         return false;
     }
 
-    if (!kit.command_buffer.beginCommandBuffer(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr)) { return false; }
+    if (!transfer_queue_.resetCommandPool(current_transfer_kit_)) { return false; }
+
+    if (!kit.command_buffer.beginCommandBuffer(0, nullptr)) { return false; }
 
     kit.command_buffer.setImageMemoryBarrier(generating_stages, VK_PIPELINE_STAGE_TRANSFER_BIT,
                                              std::array{
