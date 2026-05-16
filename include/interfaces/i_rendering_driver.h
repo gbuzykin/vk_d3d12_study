@@ -171,7 +171,8 @@ struct IRenderTarget {
     virtual Extent2u getImageExtent() const = 0;
     virtual std::uint32_t getFifCount() const = 0;
     virtual bool isInvertedNdcY() const = 0;
-    virtual RenderTargetResult beginRenderTarget(const Color4f& clear_color, float depth, std::uint32_t stencil) = 0;
+    virtual RenderTargetResult beginRenderTarget(const Color4f& clear_color, float depth, std::uint32_t stencil,
+                                                 IPipeline& pipeline) = 0;
     virtual bool endRenderTarget() = 0;
     virtual void setViewport(const Rect& rect, float z_near, float z_far) = 0;
     virtual void setScissor(const Rect& rect) = 0;
