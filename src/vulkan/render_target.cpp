@@ -2,7 +2,6 @@
 
 #include "descriptor_set.h"
 #include "device.h"
-#include "object_destroyer.h"
 #include "pipeline.h"
 #include "swap_chain.h"
 #include "vulkan_logger.h"
@@ -22,10 +21,10 @@ RenderTarget::~RenderTarget() {
     frame_image_provider_->removeRenderTarget(this);
     destroyFrameResources();
     for (auto& kit : frame_render_kits_) {
-        ObjectDestroyer<VkFence>::destroy(~*device_, kit.fence);
-        device_->getGraphicsQueue().releaseCommandBuffer(~kit.command_buffer);
+        device_->vkDestroyFence(kit.fence, nullptr);
+        device_->getGraphicsQueue().releaseCommandBuffer(kit.command_buffer);
     }
-    ObjectDestroyer<VkRenderPass>::destroy(~*device_, render_pass_);
+    device_->vkDestroyRenderPass(render_pass_, nullptr);
 }
 
 bool RenderTarget::create(const uxs::db::value& opts) {
@@ -33,9 +32,7 @@ bool RenderTarget::create(const uxs::db::value& opts) {
     frame_render_kits_.resize(frame_image_provider_->getFifCount());
     for (auto& kit : frame_render_kits_) {
         if (!device_->createFence(true, kit.fence)) { return false; }
-        VkCommandBuffer command_buffer = VK_NULL_HANDLE;
-        if (!device_->getGraphicsQueue().obtainCommandBuffer(command_buffer)) { return false; }
-        kit.command_buffer = CommandBuffer::wrap(command_buffer);
+        if (!device_->getGraphicsQueue().obtainCommandBuffer(kit.command_buffer)) { return false; }
     }
 
     uxs::inline_dynarray<VkAttachmentDescription, 2> attachments_descriptions;
@@ -113,7 +110,7 @@ bool RenderTarget::create(const uxs::db::value& opts) {
         .pDependencies = subpass_dependencies.data(),
     };
 
-    VkResult result = vkCreateRenderPass(~*device_, &create_info, nullptr, &render_pass_);
+    VkResult result = device_->vkCreateRenderPass(&create_info, nullptr, &render_pass_);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create render pass: {}", result);
         return false;
@@ -179,7 +176,7 @@ bool RenderTarget::createFrameResources() {
                     },
             };
 
-            result = vkCreateImageView(~*device_, &view_create_info, nullptr, &kit.depth_stencil_image_view);
+            result = device_->vkCreateImageView(&view_create_info, nullptr, &kit.depth_stencil_image_view);
             if (result != VK_SUCCESS) {
                 logError(LOG_VK "couldn't create depth&stencil image view: {}", result);
                 return false;
@@ -213,7 +210,7 @@ bool RenderTarget::createFrameResources() {
             .layers = 1,
         };
 
-        VkResult result = vkCreateFramebuffer(~*device_, &framebuffer_create_info, nullptr, &kit.framebuffer);
+        VkResult result = device_->vkCreateFramebuffer(&framebuffer_create_info, nullptr, &kit.framebuffer);
         if (result != VK_SUCCESS) {
             logError(LOG_VK "couldn't create framebuffer: {}", result);
             return false;
@@ -228,8 +225,8 @@ bool RenderTarget::createFrameResources() {
 void RenderTarget::destroyFrameResources() {
     for (auto& kit : frame_render_kits_) {
         device_->waitForFences(std::array{kit.fence}, VK_FALSE, FINISH_FRAME_TIMEOUT);
-        ObjectDestroyer<VkFramebuffer>::destroy(~*device_, kit.framebuffer);
-        ObjectDestroyer<VkImageView>::destroy(~*device_, kit.depth_stencil_image_view);
+        device_->vkDestroyFramebuffer(kit.framebuffer, nullptr);
+        device_->vkDestroyImageView(kit.depth_stencil_image_view, nullptr);
         vmaDestroyImage(device_->getAllocator(), kit.depth_stencil_image, kit.depth_stencil_allocation);
         kit.framebuffer = VK_NULL_HANDLE;
         kit.depth_stencil_image_view = VK_NULL_HANDLE;
@@ -286,7 +283,7 @@ RenderTargetResult RenderTarget::beginRenderTarget(const Color4f& clear_color, f
     kit.command_buffer.setScissors(0, std::array{VkRect2D{.offset = {.x = 0, .y = 0}, .extent = image_extent_}});
 
     current_pipeline_ = &static_cast<Pipeline&>(pipeline);
-    kit.command_buffer.bindPipelineObject(VK_PIPELINE_BIND_POINT_GRAPHICS, ~*current_pipeline_);
+    kit.command_buffer.vkCmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, current_pipeline_->getHandle());
 
     return render_target_status_;
 }
@@ -294,7 +291,7 @@ RenderTargetResult RenderTarget::beginRenderTarget(const Color4f& clear_color, f
 bool RenderTarget::endRenderTarget() {
     auto& kit = frame_render_kits_[n_frame_];
 
-    kit.command_buffer.endRenderPass();
+    kit.command_buffer.vkCmdEndRenderPass();
 
     frame_image_provider_->imageBarrierAfter(kit.command_buffer, current_image_index_);
 
@@ -331,25 +328,26 @@ void RenderTarget::setScissor(const Rect& rect) {
 void RenderTarget::bindPipeline(IPipeline& pipeline) {
     auto& kit = frame_render_kits_[n_frame_];
     current_pipeline_ = &static_cast<Pipeline&>(pipeline);
-    kit.command_buffer.bindPipelineObject(VK_PIPELINE_BIND_POINT_GRAPHICS, ~*current_pipeline_);
+    kit.command_buffer.vkCmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, current_pipeline_->getHandle());
 }
 
 void RenderTarget::bindVertexBuffer(IBuffer& buffer, std::uint32_t slot, std::uint32_t stride, std::uint32_t offset) {
     auto& kit = frame_render_kits_[n_frame_];
     if (stride != 0) {
         kit.command_buffer.bindVertexBuffers2(
-            slot, {std::array{~static_cast<Buffer&>(buffer)}, std::array{VkDeviceSize(offset)},
+            slot, {std::array{static_cast<Buffer&>(buffer).getHandle()}, std::array{VkDeviceSize(offset)},
                    std::array{static_cast<Buffer&>(buffer).getSize() - offset}, std::array{VkDeviceSize(stride)}});
     } else {
         kit.command_buffer.bindVertexBuffers(
-            slot, {std::array{~static_cast<Buffer&>(buffer)}, std::array{VkDeviceSize(offset)}});
+            slot, {std::array{static_cast<Buffer&>(buffer).getHandle()}, std::array{VkDeviceSize(offset)}});
     }
 }
 
 void RenderTarget::bindDescriptorSet(IDescriptorSet& descriptor_set, std::uint32_t set_index) {
     auto& kit = frame_render_kits_[n_frame_];
-    kit.command_buffer.bindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS, ~current_pipeline_->getLayout(), set_index,
-                                          std::array{~static_cast<DescriptorSet&>(descriptor_set)}, {});
+    kit.command_buffer.bindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS, current_pipeline_->getLayout().getHandle(),
+                                          set_index,
+                                          std::array{static_cast<DescriptorSet&>(descriptor_set).getHandle()}, {});
 }
 
 void RenderTarget::setPrimitiveTopology(PrimitiveTopology topology) {
@@ -358,13 +356,13 @@ void RenderTarget::setPrimitiveTopology(PrimitiveTopology topology) {
         VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
     };
     auto& kit = frame_render_kits_[n_frame_];
-    kit.command_buffer.setPrimitiveTopology(topologies[unsigned(topology)]);
+    kit.command_buffer.vkCmdSetPrimitiveTopologyEXT(topologies[unsigned(topology)]);
 }
 
 void RenderTarget::drawGeometry(std::uint32_t vertex_count, std::uint32_t instance_count, std::uint32_t first_vertex,
                                 std::uint32_t first_instance) {
     auto& kit = frame_render_kits_[n_frame_];
-    kit.command_buffer.drawGeometry(vertex_count, instance_count, first_vertex, first_instance);
+    kit.command_buffer.vkCmdDraw(vertex_count, instance_count, first_vertex, first_instance);
 }
 
 //@}

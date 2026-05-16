@@ -1,7 +1,6 @@
 #include "shader_module.h"
 
 #include "device.h"
-#include "object_destroyer.h"
 #include "vulkan_logger.h"
 
 using namespace app3d;
@@ -13,7 +12,7 @@ using namespace app3d::rel::vulkan;
 
 ShaderModule::ShaderModule(Device& device) : device_(util::not_null{&device}) {}
 
-ShaderModule::~ShaderModule() { ObjectDestroyer<VkShaderModule>::destroy(~*device_, shader_module_); }
+ShaderModule::~ShaderModule() { device_->vkDestroyShaderModule(shader_module_, nullptr); }
 
 bool ShaderModule::create(const DataBlob& bytecode) {
     const VkShaderModuleCreateInfo create_info{
@@ -22,7 +21,7 @@ bool ShaderModule::create(const DataBlob& bytecode) {
         .pCode = reinterpret_cast<const std::uint32_t*>(bytecode.getData()),
     };
 
-    VkResult result = vkCreateShaderModule(~*device_, &create_info, nullptr, &shader_module_);
+    VkResult result = device_->vkCreateShaderModule(&create_info, nullptr, &shader_module_);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create shader module: {}", result);
         return false;

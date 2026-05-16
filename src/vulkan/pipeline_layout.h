@@ -47,7 +47,7 @@ class PipelineLayout : public util::ref_counter, public IPipelineLayout {
     bool create(const uxs::db::value& config);
     bool obtainDescriptorSet(std::uint32_t set_layout_index, DescriptorSetHandle& handle);
 
-    VkPipelineLayout operator~() { return pipeline_layout_; }
+    VkPipelineLayout getHandle() { return pipeline_layout_; }
 
     //@{ IPipelineLayout
     util::ref_counter& getRefCounter() override { return *this; }

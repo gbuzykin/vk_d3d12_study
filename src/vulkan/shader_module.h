@@ -15,7 +15,7 @@ class ShaderModule final : public util::ref_counter, public IShaderModule {
 
     bool create(const DataBlob& bytecode);
 
-    VkShaderModule operator~() { return shader_module_; }
+    VkShaderModule getHandle() { return shader_module_; }
 
     //@{ IShaderModule
     util::ref_counter& getRefCounter() override { return *this; }

@@ -11,6 +11,7 @@
 namespace app3d::rel::vulkan {
 
 class Device;
+class CommandBuffer;
 
 class DevQueue {
  public:
@@ -23,8 +24,8 @@ class DevQueue {
 
     bool create(Device& device);
     void destroy();
-    bool obtainCommandBuffer(VkCommandBuffer& command_buffer);
-    void releaseCommandBuffer(VkCommandBuffer command_buffer);
+    bool obtainCommandBuffer(CommandBuffer& command_buffer);
+    void releaseCommandBuffer(CommandBuffer& command_buffer);
 
     bool submitCommandBuffers(util::multispan<const VkSemaphore, const VkPipelineStageFlags> wait_semaphore_infos,
                               std::span<const VkCommandBuffer> command_buffers,
@@ -32,8 +33,6 @@ class DevQueue {
 
     RenderTargetResult presentImages(std::span<const VkSemaphore> wait_semaphores,
                                      util::multispan<const VkSwapchainKHR, const std::uint32_t> images_to_present);
-
-    VkQueue operator~() { return queue_; }
 
  private:
     Device* device_ = nullptr;

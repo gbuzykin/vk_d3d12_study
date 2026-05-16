@@ -1,7 +1,6 @@
 #include "texture.h"
 
 #include "device.h"
-#include "object_destroyer.h"
 #include "render_target.h"
 #include "rendering_driver.h"
 #include "vulkan_logger.h"
@@ -18,7 +17,7 @@ using namespace app3d::rel::vulkan;
 Texture::Texture(Device& device) : device_(util::not_null{&device}) {}
 
 Texture::~Texture() {
-    ObjectDestroyer<VkImageView>::destroy(~*device_, image_view_);
+    device_->vkDestroyImageView(image_view_, nullptr);
     vmaDestroyImage(device_->getAllocator(), image_, allocation_);
 }
 
@@ -34,7 +33,7 @@ bool Texture::create(const TextureDesc& desc) {
                                                                    VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 
     VkFormatProperties format_properties;
-    vkGetPhysicalDeviceFormatProperties(~device_->getPhysicalDevice(), image_format_, &format_properties);
+    device_->getPhysicalDevice().vkGetPhysicalDeviceFormatProperties(image_format_, &format_properties);
 
     if (!(format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT)) {
         logError(LOG_VK "provided format is not supported for a sampled image");
@@ -84,7 +83,7 @@ bool Texture::create(const TextureDesc& desc) {
             },
     };
 
-    result = vkCreateImageView(~*device_, &view_create_info, nullptr, &image_view_);
+    result = device_->vkCreateImageView(&view_create_info, nullptr, &image_view_);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create image view: {}", result);
         return false;
@@ -110,7 +109,7 @@ RenderTargetResult Texture::acquireFrameImage(std::uint32_t n_frame, std::uint64
 
 RenderTargetResult Texture::submitFrameImage(std::uint32_t n_frame, std::uint32_t image_index,
                                              CommandBuffer& command_buffer, VkFence fence) {
-    if (!device_->getGraphicsQueue().submitCommandBuffers({}, std::array{~command_buffer}, {}, fence)) {
+    if (!device_->getGraphicsQueue().submitCommandBuffers({}, std::array{command_buffer.getHandle()}, {}, fence)) {
         return RenderTargetResult::FAILED;
     }
     return RenderTargetResult::SUCCESS;

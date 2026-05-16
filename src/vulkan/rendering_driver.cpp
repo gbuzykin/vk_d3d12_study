@@ -1,7 +1,6 @@
 #include "rendering_driver.h"
 
 #include "device.h"
-#include "object_destroyer.h"
 #include "surface.h"
 #include "vulkan_logger.h"
 
@@ -18,8 +17,8 @@ RenderingDriver::RenderingDriver() {}
 
 RenderingDriver::~RenderingDriver() {
     logDebug(LOG_VK "destroy RenderingDriver");
-    ObjectDestroyer<VkInstance>::destroy(instance_);
-    if (vulkan_library_) { freeDynamicLibrary(vulkan_library_); }
+    vkDestroyInstance(nullptr);
+    freeDynamicLibrary(vulkan_library_);
 }
 
 bool RenderingDriver::isExtensionSupported(const char* extension) const {
@@ -97,12 +96,12 @@ bool RenderingDriver::loadVulkanLoaderLibrary() {
     if (!vulkan_library_) { return false; }
 
 #define EXPORTED_VK_FUNCTION(name) \
-    name = (PFN_##name)getDynamicLibraryEntry(vulkan_library_, #name); \
-    if (!name) { return false; }
+    vk_funcs_.name = (PFN_##name)getDynamicLibraryEntry(vulkan_library_, #name); \
+    if (!vk_funcs_.name) { return false; }
 
 #define GLOBAL_LEVEL_VK_FUNCTION(name) \
-    name = (PFN_##name)vkGetInstanceProcAddr(nullptr, #name); \
-    if (!name) { \
+    vk_funcs_.name = (PFN_##name)vk_funcs_.vkGetInstanceProcAddr(nullptr, #name); \
+    if (!vk_funcs_.name) { \
         logError(LOG_VK "couldn't obtain global-level Vulkan function '{}'", #name); \
         return false; \
     }
@@ -114,14 +113,14 @@ bool RenderingDriver::loadVulkanLoaderLibrary() {
 
 bool RenderingDriver::loadExtensionProperties() {
     std::uint32_t extension_count = 0;
-    VkResult result = vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, nullptr);
+    VkResult result = vk_funcs_.vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, nullptr);
     if (result != VK_SUCCESS || extension_count == 0) {
         logError(LOG_VK "couldn't get the number of instance extensions: {}", result);
         return false;
     }
 
     extensions_.resize(extension_count);
-    result = vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, extensions_.data());
+    result = vk_funcs_.vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, extensions_.data());
     if (result != VK_SUCCESS || extension_count == 0) {
         logError(LOG_VK "couldn't enumerate Instance extensions: {}", result);
         return false;
@@ -174,7 +173,7 @@ bool RenderingDriver::createInstance(const uxs::db::value& app_info) {
         .ppEnabledExtensionNames = instance_extensions.data(),
     };
 
-    VkResult result = vkCreateInstance(&create_info, nullptr, &instance_);
+    VkResult result = vk_funcs_.vkCreateInstance(&create_info, nullptr, &instance_);
     if (result != VK_SUCCESS || instance_ == VK_NULL_HANDLE) {
         logError(LOG_VK "couldn't create Vulkan Instance: {}", result);
         return false;
@@ -187,16 +186,16 @@ bool RenderingDriver::createInstance(const uxs::db::value& app_info) {
     };
 
 #define INSTANCE_LEVEL_VK_FUNCTION(name) \
-    name = (PFN_##name)vkGetInstanceProcAddr(instance_, #name); \
-    if (!name) { \
+    vk_funcs_.name = (PFN_##name)vk_funcs_.vkGetInstanceProcAddr(instance_, #name); \
+    if (!vk_funcs_.name) { \
         logError(LOG_VK "couldn't obtain instance-level Vulkan function '{}'", #name); \
         return false; \
     }
 
 #define INSTANCE_LEVEL_VK_FUNCTION_FROM_EXTENSION(name, extension) \
     if (is_extension_enabled(extension)) { \
-        name = (PFN_##name)vkGetInstanceProcAddr(instance_, #name); \
-        if (!name) { \
+        vk_funcs_.name = (PFN_##name)vk_funcs_.vkGetInstanceProcAddr(instance_, #name); \
+        if (!vk_funcs_.name) { \
             logError(LOG_VK "couldn't obtain instance-level Vulkan function '{}'", #name); \
             return false; \
         } \
@@ -205,6 +204,10 @@ bool RenderingDriver::createInstance(const uxs::db::value& app_info) {
         return false; \
     }
 
+#define INSTANCE_LEVEL_VK_FUNCTION_PHYDEV(name) INSTANCE_LEVEL_VK_FUNCTION(name)
+#define INSTANCE_LEVEL_VK_FUNCTION_DEV(name)    INSTANCE_LEVEL_VK_FUNCTION(name)
+#define INSTANCE_LEVEL_VK_FUNCTION_FROM_EXTENSION_PHYDEV(name, extension) \
+    INSTANCE_LEVEL_VK_FUNCTION_FROM_EXTENSION(name, extension)
 #include "vulkan_function_list.inl"
 
     return true;
@@ -212,14 +215,14 @@ bool RenderingDriver::createInstance(const uxs::db::value& app_info) {
 
 bool RenderingDriver::loadPhysicalDeviceList() {
     std::uint32_t physical_device_count = 0;
-    VkResult result = vkEnumeratePhysicalDevices(instance_, &physical_device_count, nullptr);
+    VkResult result = vkEnumeratePhysicalDevices(&physical_device_count, nullptr);
     if (result != VK_SUCCESS || physical_device_count == 0) {
         logError(LOG_VK "couldn't get the number of available physical devices: {}", result);
         return false;
     }
 
     uxs::inline_dynarray<VkPhysicalDevice> physical_device_list(physical_device_count);
-    result = vkEnumeratePhysicalDevices(instance_, &physical_device_count, physical_device_list.data());
+    result = vkEnumeratePhysicalDevices(&physical_device_count, physical_device_list.data());
     if (result != VK_SUCCESS || physical_device_count == 0) {
         logError(LOG_VK "couldn't enumerate physical devices: {}", result);
         return false;
@@ -228,7 +231,7 @@ bool RenderingDriver::loadPhysicalDeviceList() {
     physical_devices_.reserve(physical_device_count);
 
     for (const auto& phys_dev_handle : physical_device_list) {
-        auto physical_device = std::make_unique<PhysicalDevice>(phys_dev_handle);
+        auto physical_device = std::make_unique<PhysicalDevice>(*this, phys_dev_handle);
         if (physical_device->loadExtensionProperties() && physical_device->loadFeaturesAndProperties()) {
             physical_devices_.emplace_back(std::move(physical_device));
         }
@@ -240,7 +243,8 @@ bool RenderingDriver::loadPhysicalDeviceList() {
 // --------------------------------------------------------
 // PhysicalDevice class implementation
 
-PhysicalDevice::PhysicalDevice(VkPhysicalDevice physical_device) : physical_device_(physical_device) {}
+PhysicalDevice::PhysicalDevice(RenderingDriver& instance, VkPhysicalDevice physical_device)
+    : instance_(instance), physical_device_(physical_device) {}
 
 bool PhysicalDevice::isExtensionSupported(const char* extension) const {
     return std::ranges::any_of(extensions_, [extension](const auto& item) {
@@ -266,14 +270,14 @@ bool PhysicalDevice::isSuitableDevice(const uxs::db::value& caps) const {
 
 bool PhysicalDevice::loadExtensionProperties() {
     std::uint32_t extension_count = 0;
-    VkResult result = vkEnumerateDeviceExtensionProperties(physical_device_, nullptr, &extension_count, nullptr);
+    VkResult result = vkEnumerateDeviceExtensionProperties(nullptr, &extension_count, nullptr);
     if (result != VK_SUCCESS || extension_count == 0) {
         logError(LOG_VK "couldn't get the number of device extensions: {}", result);
         return false;
     }
 
     extensions_.resize(extension_count);
-    result = vkEnumerateDeviceExtensionProperties(physical_device_, nullptr, &extension_count, extensions_.data());
+    result = vkEnumerateDeviceExtensionProperties(nullptr, &extension_count, extensions_.data());
     if (result != VK_SUCCESS || extension_count == 0) {
         logError(LOG_VK "couldn't enumerate device extensions: {}", result);
         return false;
@@ -283,19 +287,19 @@ bool PhysicalDevice::loadExtensionProperties() {
 }
 
 bool PhysicalDevice::loadFeaturesAndProperties() {
-    vkGetPhysicalDeviceProperties(physical_device_, &properties_);
-    vkGetPhysicalDeviceFeatures(physical_device_, &features_);
-    vkGetPhysicalDeviceMemoryProperties(physical_device_, &memory_properties_);
+    vkGetPhysicalDeviceProperties(&properties_);
+    vkGetPhysicalDeviceFeatures(&features_);
+    vkGetPhysicalDeviceMemoryProperties(&memory_properties_);
 
     std::uint32_t queue_family_count = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &queue_family_count, nullptr);
+    vkGetPhysicalDeviceQueueFamilyProperties(&queue_family_count, nullptr);
     if (queue_family_count == 0) {
         logError(LOG_VK "couldn't get the number of queue families");
         return false;
     }
 
     queue_families_.resize(queue_family_count);
-    vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &queue_family_count, queue_families_.data());
+    vkGetPhysicalDeviceQueueFamilyProperties(&queue_family_count, queue_families_.data());
     if (queue_family_count == 0) {
         logError(LOG_VK "couldn't acquire properties of queue families");
         return false;

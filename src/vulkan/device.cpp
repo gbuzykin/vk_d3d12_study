@@ -1,7 +1,6 @@
 #include "device.h"
 
 #include "descriptor_set.h"
-#include "object_destroyer.h"
 #include "pipeline.h"
 #include "render_target.h"
 #include "rendering_driver.h"
@@ -28,14 +27,14 @@ Device::~Device() {
     for (auto& kit : transfer_kits_) {
         waitForFences(std::array{kit.fence}, VK_FALSE, FINISH_TRANSFER_TIMEOUT);
         vmaDestroyBuffer(allocator_, kit.staging_buffer.handle, kit.staging_buffer.allocation);
-        ObjectDestroyer<VkFence>::destroy(device_, kit.fence);
+        vkDestroyFence(kit.fence, nullptr);
     }
     graphics_queue_.destroy();
     compute_queue_.destroy();
     transfer_queue_.destroy();
     for (auto* surface : instance_->getSurfaces()) { surface->getPresentQueue().destroy(); }
     vmaDestroyAllocator(allocator_);
-    ObjectDestroyer<VkDevice>::destroy(device_);
+    vkDestroyDevice(nullptr);
 }
 
 bool Device::create(const uxs::db::value& caps) {
@@ -155,7 +154,7 @@ bool Device::create(const uxs::db::value& caps) {
         .ppEnabledExtensionNames = device_extensions.data(),
     };
 
-    VkResult result = vkCreateDevice(~physical_device_, &create_info, nullptr, &device_);
+    VkResult result = physical_device_.vkCreateDevice(&create_info, nullptr, &device_);
     if (result != VK_SUCCESS || device_ == VK_NULL_HANDLE) {
         logError(LOG_VK "couldn't create logical device: {}", result);
         return false;
@@ -168,16 +167,16 @@ bool Device::create(const uxs::db::value& caps) {
     };
 
 #define DEVICE_LEVEL_VK_FUNCTION(name) \
-    name = (PFN_##name)vkGetDeviceProcAddr(device_, #name); \
-    if (!name) { \
+    vk_funcs_.name = (PFN_##name)instance_->getVkFuncs().vkGetDeviceProcAddr(device_, #name); \
+    if (!vk_funcs_.name) { \
         logError(LOG_VK "couldn't obtain device-level Vulkan function '{}'", #name); \
         return false; \
     }
 
 #define DEVICE_LEVEL_VK_FUNCTION_FROM_EXTENSION(name, extension) \
     if (is_extension_enabled(extension)) { \
-        name = (PFN_##name)vkGetDeviceProcAddr(device_, #name); \
-        if (!name) { \
+        vk_funcs_.name = (PFN_##name)instance_->getVkFuncs().vkGetDeviceProcAddr(device_, #name); \
+        if (!vk_funcs_.name) { \
             logError(LOG_VK "couldn't obtain device-level Vulkan function '{}'", #name); \
             return false; \
         } \
@@ -186,19 +185,25 @@ bool Device::create(const uxs::db::value& caps) {
         return false; \
     }
 
+#define DEVICE_LEVEL_VK_FUNCTION_QUEUE(name) DEVICE_LEVEL_VK_FUNCTION(name)
+#define DEVICE_LEVEL_VK_FUNCTION_CMD(name)   DEVICE_LEVEL_VK_FUNCTION(name)
+#define DEVICE_LEVEL_VK_FUNCTION_FROM_EXTENSION_QUEUE(name, extension) \
+    DEVICE_LEVEL_VK_FUNCTION_FROM_EXTENSION(name, extension)
+#define DEVICE_LEVEL_VK_FUNCTION_FROM_EXTENSION_CMD(name, extension) \
+    DEVICE_LEVEL_VK_FUNCTION_FROM_EXTENSION(name, extension)
 #include "vulkan_function_list.inl"
 
     const VmaVulkanFunctions vulkan_functions{
-        .vkGetInstanceProcAddr = vkGetInstanceProcAddr,
-        .vkGetDeviceProcAddr = vkGetDeviceProcAddr,
+        .vkGetInstanceProcAddr = instance_->getVkFuncs().vkGetInstanceProcAddr,
+        .vkGetDeviceProcAddr = instance_->getVkFuncs().vkGetDeviceProcAddr,
     };
 
     const VmaAllocatorCreateInfo allocator_create_info{
         .flags = VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT,
-        .physicalDevice = ~physical_device_,
+        .physicalDevice = physical_device_.getHandle(),
         .device = device_,
         .pVulkanFunctions = &vulkan_functions,
-        .instance = ~*instance_,
+        .instance = instance_->getHandle(),
         .vulkanApiVersion = VK_API_VERSION_1_2,
     };
 
@@ -217,9 +222,7 @@ bool Device::create(const uxs::db::value& caps) {
 
     transfer_kits_.resize(TRANSFER_KIT_COUNT);
     for (auto& kit : transfer_kits_) {
-        VkCommandBuffer command_buffer = VK_NULL_HANDLE;
-        if (!transfer_queue_.obtainCommandBuffer(command_buffer)) { return false; }
-        kit.command_buffer = CommandBuffer::wrap(command_buffer);
+        if (!transfer_queue_.obtainCommandBuffer(kit.command_buffer)) { return false; }
         if (!createFence(true, kit.fence)) { return false; }
     }
 
@@ -228,7 +231,7 @@ bool Device::create(const uxs::db::value& caps) {
 
 bool Device::createSemaphore(VkSemaphore& semaphore) {
     const VkSemaphoreCreateInfo create_info{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-    VkResult result = vkCreateSemaphore(device_, &create_info, nullptr, &semaphore);
+    VkResult result = vkCreateSemaphore(&create_info, nullptr, &semaphore);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create semaphore: {}", result);
         return false;
@@ -242,7 +245,7 @@ bool Device::createFence(bool signaled, VkFence& fence) {
         .flags = signaled ? VK_FENCE_CREATE_SIGNALED_BIT : 0u,
     };
 
-    VkResult result = vkCreateFence(device_, &create_info, nullptr, &fence);
+    VkResult result = vkCreateFence(&create_info, nullptr, &fence);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "couldn't create fence: {}", result);
         return false;
@@ -251,7 +254,7 @@ bool Device::createFence(bool signaled, VkFence& fence) {
 }
 
 bool Device::waitForFences(std::span<const VkFence> fences, VkBool32 wait_for_all, std::uint64_t timeout) {
-    VkResult result = vkWaitForFences(device_, std::uint32_t(fences.size()), fences.data(), wait_for_all, timeout);
+    VkResult result = vkWaitForFences(std::uint32_t(fences.size()), fences.data(), wait_for_all, timeout);
     if (result != VK_SUCCESS) {
         logError(LOG_VK "waiting for fences failed: {}", result);
         return false;
@@ -260,7 +263,7 @@ bool Device::waitForFences(std::span<const VkFence> fences, VkBool32 wait_for_al
 }
 
 bool Device::resetFences(std::span<const VkFence> fences) {
-    VkResult result = vkResetFences(device_, std::uint32_t(fences.size()), fences.data());
+    VkResult result = vkResetFences(std::uint32_t(fences.size()), fences.data());
     if (result != VK_SUCCESS) {
         logError(LOG_VK "error occurred when tried to reset fences: {}", result);
         return false;
@@ -320,7 +323,8 @@ bool Device::updateBuffer(std::span<const std::uint8_t> data, VkBuffer dst, VkDe
 
     if (!resetFences(std::array{kit.fence})) { return false; }
 
-    if (!transfer_queue_.submitCommandBuffers({}, std::array{~kit.command_buffer}, signal_semaphores, kit.fence)) {
+    if (!transfer_queue_.submitCommandBuffers({}, std::array{kit.command_buffer.getHandle()}, signal_semaphores,
+                                              kit.fence)) {
         return false;
     }
 
@@ -427,7 +431,8 @@ bool Device::updateImage(const std::uint8_t* data, VkImage dst, VkFormat format,
 
     if (!resetFences(std::array{kit.fence})) { return false; }
 
-    if (!transfer_queue_.submitCommandBuffers({}, std::array{~kit.command_buffer}, signal_semaphores, kit.fence)) {
+    if (!transfer_queue_.submitCommandBuffers({}, std::array{kit.command_buffer.getHandle()}, signal_semaphores,
+                                              kit.fence)) {
         return false;
     }
 
@@ -438,7 +443,7 @@ bool Device::updateImage(const std::uint8_t* data, VkImage dst, VkFormat format,
 //@{ IDevice
 
 bool Device::waitDevice() {
-    VkResult result = vkDeviceWaitIdle(device_);
+    VkResult result = vkDeviceWaitIdle();
     if (result != VK_SUCCESS) {
         logError(LOG_VK "waiting for device failed: {}", result);
         return false;

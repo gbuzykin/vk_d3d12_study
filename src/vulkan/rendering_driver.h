@@ -9,46 +9,35 @@
 
 namespace app3d::rel::vulkan {
 
+class PhysicalDevice;
 class Surface;
-
-class PhysicalDevice {
- public:
-    explicit PhysicalDevice(VkPhysicalDevice physical_device);
-    PhysicalDevice(const PhysicalDevice&) = delete;
-    PhysicalDevice& operator=(const PhysicalDevice&) = delete;
-
-    bool isExtensionSupported(const char* extension) const;
-    const VkPhysicalDeviceProperties& getProperties() const { return properties_; }
-    const VkPhysicalDeviceFeatures& getFeatures() const { return features_; }
-    const VkPhysicalDeviceMemoryProperties& getMemoryProperties() const { return memory_properties_; }
-    std::span<const VkQueueFamilyProperties> getQueueFamilies() const { return queue_families_; }
-    std::uint32_t findSuitableQueueFamily(VkQueueFlags flags, std::uint32_t n = 0) const;
-    bool isSuitableDevice(const uxs::db::value& caps) const;
-
-    bool loadExtensionProperties();
-    bool loadFeaturesAndProperties();
-
-    VkPhysicalDevice operator~() { return physical_device_; }
-
- private:
-    VkPhysicalDevice physical_device_;
-    std::vector<VkExtensionProperties> extensions_;
-    VkPhysicalDeviceProperties properties_{};
-    VkPhysicalDeviceFeatures features_{};
-    VkPhysicalDeviceMemoryProperties memory_properties_{};
-    std::vector<VkQueueFamilyProperties> queue_families_;
-};
 
 class RenderingDriver final : public util::ref_counter, public IRenderingDriver {
  public:
     RenderingDriver();
     ~RenderingDriver() override;
 
+#define INSTANCE_LEVEL_VK_FUNCTION(name) \
+    template<typename... Args> \
+    auto name(Args&&... args) { \
+        return vk_funcs_.name(instance_, std::forward<Args>(args)...); \
+    }
+
+#define INSTANCE_LEVEL_VK_FUNCTION_FROM_EXTENSION(name, extension) \
+    template<typename... Args> \
+    auto name(Args&&... args) { \
+        return vk_funcs_.name(instance_, std::forward<Args>(args)...); \
+    }
+
+#include "vulkan_function_list.inl"
+
+    const InstanceVkFuncTable& getVkFuncs() { return vk_funcs_; }
+
     bool isExtensionSupported(const char* extension) const;
     std::span<Surface*> getSurfaces() { return surfaces_; }
     void removeSurface(Surface* surface) { std::erase(surfaces_, surface); }
 
-    VkInstance operator~() { return instance_; }
+    VkInstance getHandle() { return instance_; }
 
     //@{ IRenderingDriver
     util::ref_counter& getRefCounter() override { return *this; }
@@ -63,6 +52,7 @@ class RenderingDriver final : public util::ref_counter, public IRenderingDriver 
 
  private:
     void* vulkan_library_ = nullptr;
+    InstanceVkFuncTable vk_funcs_;
     VkInstance instance_{VK_NULL_HANDLE};
     std::vector<VkExtensionProperties> extensions_;
     std::vector<std::unique_ptr<PhysicalDevice>> physical_devices_;
@@ -73,6 +63,49 @@ class RenderingDriver final : public util::ref_counter, public IRenderingDriver 
     bool loadExtensionProperties();
     bool createInstance(const uxs::db::value& app_info);
     bool loadPhysicalDeviceList();
+};
+
+class PhysicalDevice {
+ public:
+    explicit PhysicalDevice(RenderingDriver& instance, VkPhysicalDevice physical_device);
+    PhysicalDevice(const PhysicalDevice&) = delete;
+    PhysicalDevice& operator=(const PhysicalDevice&) = delete;
+
+    bool isExtensionSupported(const char* extension) const;
+    const VkPhysicalDeviceProperties& getProperties() const { return properties_; }
+    const VkPhysicalDeviceFeatures& getFeatures() const { return features_; }
+    const VkPhysicalDeviceMemoryProperties& getMemoryProperties() const { return memory_properties_; }
+    std::span<const VkQueueFamilyProperties> getQueueFamilies() const { return queue_families_; }
+    std::uint32_t findSuitableQueueFamily(VkQueueFlags flags, std::uint32_t n = 0) const;
+    bool isSuitableDevice(const uxs::db::value& caps) const;
+
+    bool loadExtensionProperties();
+    bool loadFeaturesAndProperties();
+
+    VkPhysicalDevice getHandle() { return physical_device_; }
+
+#define INSTANCE_LEVEL_VK_FUNCTION_PHYDEV(name) \
+    template<typename... Args> \
+    auto name(Args&&... args) { \
+        return instance_.getVkFuncs().name(physical_device_, std::forward<Args>(args)...); \
+    }
+
+#define INSTANCE_LEVEL_VK_FUNCTION_FROM_EXTENSION_PHYDEV(name, extension) \
+    template<typename... Args> \
+    auto name(Args&&... args) { \
+        return instance_.getVkFuncs().name(physical_device_, std::forward<Args>(args)...); \
+    }
+
+#include "vulkan_function_list.inl"
+
+ private:
+    RenderingDriver& instance_;
+    VkPhysicalDevice physical_device_;
+    std::vector<VkExtensionProperties> extensions_;
+    VkPhysicalDeviceProperties properties_{};
+    VkPhysicalDeviceFeatures features_{};
+    VkPhysicalDeviceMemoryProperties memory_properties_{};
+    std::vector<VkQueueFamilyProperties> queue_families_;
 };
 
 }  // namespace app3d::rel::vulkan
