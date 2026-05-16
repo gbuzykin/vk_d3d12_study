@@ -17,22 +17,8 @@ class PipelineLayout : public util::ref_counter, public IPipelineLayout {
     explicit PipelineLayout(Device& device);
     ~PipelineLayout();
 
-    enum class BindingType { CONSTANT_BUFFER = 0, SHADER_RESOURCE, UNORDERED, SAMPLER, TOTAL_COUNT };
-
-    static constexpr std::array binding_types{
-        BindingType::SHADER_RESOURCE,
-        BindingType::CONSTANT_BUFFER,
-        BindingType::CONSTANT_BUFFER,
-    };
-
-    static constexpr std::array vulkan_desc_types{
-        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
-    };
-
     struct Binding {
-        DescriptorType type;
+        DescriptorType desc_type;
         std::uint32_t binding;
         std::uint32_t array_element;
     };
@@ -64,11 +50,11 @@ class PipelineLayout : public util::ref_counter, public IPipelineLayout {
     uxs::inline_dynarray<std::uint32_t> binding_offsets_;
     uxs::inline_dynarray<SlotBindings, 32> bindings_;
 
-    void setBinding(BindingType binding_type, std::uint32_t slot, DescriptorType type, std::uint32_t binding,
+    void setBinding(BindingType binding_type, std::uint32_t slot, DescriptorType desc_type, std::uint32_t binding,
                     std::uint32_t count) {
         if (slot + count > bindings_.size()) { bindings_.resize(slot + count); }
         for (std::uint32_t n = 0; n < count; ++n) {
-            bindings_[slot + n][unsigned(binding_type)] = Binding{type, binding, n};
+            bindings_[slot + n][unsigned(binding_type)] = Binding{desc_type, binding, n};
         }
     }
 

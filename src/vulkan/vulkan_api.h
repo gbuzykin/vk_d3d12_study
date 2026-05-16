@@ -17,11 +17,6 @@
 
 namespace app3d::rel::vulkan {
 
-enum class DescriptorType {
-    COMBINED_TEXTURE_SAMPLER = 0,
-    CONSTANT_BUFFER,
-};
-
 struct InstanceVkFuncTable {
 #define EXPORTED_VK_FUNCTION(name)                                        PFN_##name name;
 #define GLOBAL_LEVEL_VK_FUNCTION(name)                                    PFN_##name name;

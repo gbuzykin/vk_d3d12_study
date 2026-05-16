@@ -2,14 +2,79 @@
 
 #include "vulkan_api.h"
 
-#include <cstdint>
-#include <string_view>
-#include <utility>
+#include <array>
 
 namespace app3d::rel::vulkan {
-VkShaderStageFlagBits parseShaderStage(std::string_view stage);
-VkPrimitiveTopology parsePrimitiveTopology(std::string_view topology);
-VkFormat parseFormat(std::string_view fmt);
-DescriptorType parseDescriptorType(std::string_view type);
-std::pair<std::uint32_t, std::uint32_t> getFormatSizeAlignment(VkFormat fmt);
+
+constexpr std::array TBL_VK_FORMAT{
+    // Format::
+    VK_FORMAT_R32_SFLOAT,           // R32_FLOAT
+    VK_FORMAT_R32G32_SFLOAT,        // R32G32_FLOAT
+    VK_FORMAT_R32G32B32_SFLOAT,     // R32G32B32_FLOAT
+    VK_FORMAT_R32G32B32A32_SFLOAT,  // R32G32B32A32_FLOAT
+    VK_FORMAT_R8G8B8A8_UNORM,       // R8G8B8A8_UNORM
+};
+
+constexpr std::array TBL_VK_PRIMITIVE_TOPOLOGY{
+    // PrimitiveTopology::
+    VK_PRIMITIVE_TOPOLOGY_POINT_LIST,      // POINTS
+    VK_PRIMITIVE_TOPOLOGY_LINE_LIST,       // LINES
+    VK_PRIMITIVE_TOPOLOGY_LINE_STRIP,      // LINE_STRIP
+    VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,   // TRIANGLES
+    VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,  // TRIANGLE_STRIP
+};
+
+constexpr std::array TBL_VK_BUFFER_USAGE{
+    // BufferType::
+    VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,   // VERTEX
+    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,  // CONSTANT
+};
+
+constexpr std::array TBL_VK_SHADER_STAGE{
+    // ShaderStage::
+    VK_SHADER_STAGE_ALL_GRAPHICS,  // ALL_STAGES
+    VK_SHADER_STAGE_VERTEX_BIT,    // VERTEX_SHADER
+    VK_SHADER_STAGE_FRAGMENT_BIT,  // PIXEL_SHADER
+};
+
+constexpr std::array TBL_VK_DESC_TYPE{
+    // DescriptorType::
+    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,  // COMBINED_TEXTURE_SAMPLER
+    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,          // CONSTANT_BUFFER
+};
+
+constexpr std::array TBL_VK_MIN_MAG_FILTER{
+    // SamplerFilter::
+    std::array{VK_FILTER_NEAREST, VK_FILTER_NEAREST},  // MIN_MAG_MIP_POINT
+    std::array{VK_FILTER_NEAREST, VK_FILTER_NEAREST},  // MIN_MAG_POINT_MIP_LINEAR
+    std::array{VK_FILTER_NEAREST, VK_FILTER_LINEAR},   // MIN_POINT_MAG_LINEAR_MIP_POINT
+    std::array{VK_FILTER_NEAREST, VK_FILTER_LINEAR},   // MIN_POINT_MAG_MIP_LINEAR
+    std::array{VK_FILTER_LINEAR, VK_FILTER_NEAREST},   // MIN_LINEAR_MAG_MIP_POINT
+    std::array{VK_FILTER_LINEAR, VK_FILTER_NEAREST},   // MIN_LINEAR_MAG_POINT_MIP_LINEAR
+    std::array{VK_FILTER_LINEAR, VK_FILTER_LINEAR},    // MIN_MAG_LINEAR_MIP_POINT
+    std::array{VK_FILTER_LINEAR, VK_FILTER_LINEAR},    // MIN_MAG_MIP_LINEAR
+    std::array{VK_FILTER_LINEAR, VK_FILTER_LINEAR},    // ANISOTROPIC
+};
+
+constexpr std::array TBL_VK_MIPMAP_FILTER{
+    // SamplerFilter::
+    VK_SAMPLER_MIPMAP_MODE_NEAREST,  // MIN_MAG_MIP_POINT
+    VK_SAMPLER_MIPMAP_MODE_LINEAR,   // MIN_MAG_POINT_MIP_LINEAR
+    VK_SAMPLER_MIPMAP_MODE_NEAREST,  // MIN_POINT_MAG_LINEAR_MIP_POINT
+    VK_SAMPLER_MIPMAP_MODE_LINEAR,   // MIN_POINT_MAG_MIP_LINEAR
+    VK_SAMPLER_MIPMAP_MODE_NEAREST,  // MIN_LINEAR_MAG_MIP_POINT
+    VK_SAMPLER_MIPMAP_MODE_LINEAR,   // MIN_LINEAR_MAG_POINT_MIP_LINEAR
+    VK_SAMPLER_MIPMAP_MODE_NEAREST,  // MIN_MAG_LINEAR_MIP_POINT
+    VK_SAMPLER_MIPMAP_MODE_LINEAR,   // MIN_MAG_MIP_LINEAR
+    VK_SAMPLER_MIPMAP_MODE_LINEAR,   // ANISOTROPIC
+};
+
+constexpr std::array TBL_VK_ADDRESS_MODE{
+    // SamplerAddressMode::
+    VK_SAMPLER_ADDRESS_MODE_REPEAT,                // REPEAT
+    VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT,       // MIRRORED_REPEAT
+    VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,         // CLAMP_TO_EDGE
+    VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE,  // MIRROR_CLAMP_TO_EDGE
+};
+
 }  // namespace app3d::rel::vulkan

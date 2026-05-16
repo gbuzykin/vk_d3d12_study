@@ -17,7 +17,7 @@ class Texture final : public FrameImageProvider, public ITexture {
     VkImageView getImageView(std::uint32_t image_index) override { return image_view_; }
     std::uint32_t getImageCount() const override { return 1; }
     std::uint32_t getFifCount() const override { return 1; }
-    VkFormat getImageFormat() const override { return image_format_; }
+    VkFormat getImageFormat() const override;
     VkExtent2D getImageExtent() const override {
         return {.width = image_extent_.width, .height = image_extent_.height};
     }
@@ -43,8 +43,8 @@ class Texture final : public FrameImageProvider, public ITexture {
 
  private:
     util::ref_ptr<Device> device_;
-    VkFormat image_format_{};
-    VkExtent3D image_extent_{};
+    Format image_format_{};
+    Extent3u image_extent_{};
     VkPipelineStageFlags image_usage_{};
     VkImage image_{VK_NULL_HANDLE};
     VmaAllocation allocation_{VK_NULL_HANDLE};

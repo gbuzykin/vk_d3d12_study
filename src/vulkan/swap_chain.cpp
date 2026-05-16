@@ -116,10 +116,6 @@ bool SwapChain::create(const uxs::db::value& opts) {
     return recreateSwapChainResources(opts);
 }
 
-VkFormat SwapChain::getImageFormat() const { return surface_->getImageFormat().format; }
-
-VkImageUsageFlags SwapChain::getImageUsage() const { return surface_->getImageUsage(); }
-
 VkPipelineStageFlags SwapChain::getImageConsumingStages() const { return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT; }
 
 VkAccessFlags SwapChain::getImageAccess() const { return VK_ACCESS_MEMORY_READ_BIT; }
@@ -234,9 +230,12 @@ bool SwapChain::recreateSwapChainResources(const uxs::db::value& opts) {
     if (!surface_->loadCapabilities(device_->getPhysicalDevice())) { return false; }
 
     const auto& capabilities = surface_->getCapabilities();
+    const auto image_format = surface_->getImageFormat();
 
     const std::uint32_t image_count = chooseImageCount(capabilities, opts);
+    image_format_ = image_format.format;
     image_extent_ = chooseImageExtent(capabilities, opts);
+    image_usage_ = surface_->getImageUsage();
 
     if (image_extent_.width == 0 || image_extent_.height == 0) {
         logError(LOG_VK "failed to choose swap chain image size");
@@ -253,11 +252,11 @@ bool SwapChain::recreateSwapChainResources(const uxs::db::value& opts) {
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .surface = surface_->getHandle(),
         .minImageCount = image_count,
-        .imageFormat = surface_->getImageFormat().format,
-        .imageColorSpace = surface_->getImageFormat().colorSpace,
+        .imageFormat = image_format.format,
+        .imageColorSpace = image_format.colorSpace,
         .imageExtent = image_extent_,
         .imageArrayLayers = layer_count,
-        .imageUsage = surface_->getImageUsage(),
+        .imageUsage = image_usage_,
         .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
         .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
         .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
@@ -308,7 +307,7 @@ bool SwapChain::createImageViews() {
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image = images_[n],
             .viewType = VK_IMAGE_VIEW_TYPE_2D,
-            .format = surface_->getImageFormat().format,
+            .format = image_format_,
             .subresourceRange =
                 {
                     .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,

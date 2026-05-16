@@ -27,9 +27,9 @@ class SwapChain final : public FrameImageProvider, public ISwapChain {
     VkImageView getImageView(std::uint32_t image_index) override { return image_views_[image_index]; }
     std::uint32_t getImageCount() const override { return std::uint32_t(images_.size()); }
     std::uint32_t getFifCount() const override { return 3; }
-    VkFormat getImageFormat() const override;
+    VkFormat getImageFormat() const override { return image_format_; }
     VkExtent2D getImageExtent() const override { return image_extent_; }
-    VkImageUsageFlags getImageUsage() const override;
+    VkImageUsageFlags getImageUsage() const override { return image_usage_; }
     VkPipelineStageFlags getImageConsumingStages() const override;
     VkAccessFlags getImageAccess() const override;
     VkImageLayout getImageLayout() const override;
@@ -52,7 +52,9 @@ class SwapChain final : public FrameImageProvider, public ISwapChain {
     util::ref_ptr<Device> device_;
     util::ref_ptr<Surface> surface_;
     VkSwapchainKHR swap_chain_{VK_NULL_HANDLE};
+    VkFormat image_format_{};
     VkExtent2D image_extent_{};
+    VkPipelineStageFlags image_usage_{};
     uxs::inline_dynarray<VkImage, 3> images_;
     uxs::inline_dynarray<VkImageView, 3> image_views_;
     RenderTarget* render_target_ = nullptr;

@@ -3,9 +3,8 @@
 #include "device.h"
 #include "render_target.h"
 #include "rendering_driver.h"
+#include "tables.h"
 #include "vulkan_logger.h"
-
-#include <array>
 
 using namespace app3d;
 using namespace app3d::rel;
@@ -26,14 +25,16 @@ bool Texture::create(const TextureDesc& desc) {
     const std::uint32_t num_layers = 1;
     const bool cubemap = false;
 
-    image_format_ = VK_FORMAT_R8G8B8A8_UNORM;
-    image_extent_ = {.width = desc.extent.width, .height = desc.extent.height, .depth = 1};
+    image_format_ = desc.format;
+    image_extent_ = desc.extent;
     image_usage_ = VK_IMAGE_USAGE_SAMPLED_BIT |
                    (!!(desc.flags & TextureFlags::RENDER_TARGET) ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT :
                                                                    VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 
+    const auto vk_image_format = TBL_VK_FORMAT[unsigned(image_format_)];
+
     VkFormatProperties format_properties;
-    device_->getPhysicalDevice().vkGetPhysicalDeviceFormatProperties(image_format_, &format_properties);
+    device_->getPhysicalDevice().vkGetPhysicalDeviceFormatProperties(vk_image_format, &format_properties);
 
     if (!(format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT)) {
         logError(LOG_VK "provided format is not supported for a sampled image");
@@ -49,8 +50,8 @@ bool Texture::create(const TextureDesc& desc) {
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .flags = cubemap ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0U,
         .imageType = VK_IMAGE_TYPE_2D,
-        .format = image_format_,
-        .extent = image_extent_,
+        .format = vk_image_format,
+        .extent = {.width = image_extent_.width, .height = image_extent_.height, .depth = image_extent_.depth},
         .mipLevels = num_mipmaps,
         .arrayLayers = cubemap ? 6 * num_layers : num_layers,
         .samples = VK_SAMPLE_COUNT_1_BIT,
@@ -72,7 +73,7 @@ bool Texture::create(const TextureDesc& desc) {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .image = image_,
         .viewType = VK_IMAGE_VIEW_TYPE_2D,
-        .format = image_format_,
+        .format = vk_image_format,
         .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -91,6 +92,8 @@ bool Texture::create(const TextureDesc& desc) {
 
     return true;
 }
+
+VkFormat Texture::getImageFormat() const { return TBL_VK_FORMAT[unsigned(image_format_)]; }
 
 VkPipelineStageFlags Texture::getImageConsumingStages() const { return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; }
 

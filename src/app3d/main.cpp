@@ -320,6 +320,7 @@ bool App3DMainWindow::initScene() {
     if (!loadImageFromFile("data/images/sunset.jpg", image_, 4)) { return false; }
 
     const rel::TextureDesc texture_desc{
+        .format = rel::Format::R8G8B8A8_UNORM,
         .extent = {.width = image_.width, .height = image_.height, .depth = 1},
     };
 

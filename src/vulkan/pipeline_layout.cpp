@@ -8,6 +8,8 @@
 #include "tables.h"
 #include "vulkan_logger.h"
 
+#include "rel/tables.h"
+
 using namespace app3d;
 using namespace app3d::rel;
 using namespace app3d::rel::vulkan;
@@ -44,8 +46,8 @@ bool PipelineLayout::create(const uxs::db::value& config) {
         for (const auto& desc : list.as_array()) {
             const std::uint32_t binding = desc.value_or<std::uint32_t>("binding", def_binding);
             const auto type = parseDescriptorType(desc.value("type").as_string_view());
-            const auto binding_type = binding_types[unsigned(type)];
-            const auto vulkan_type = vulkan_desc_types[unsigned(type)];
+            const auto binding_type = TBL_DESC_BINDING_TYPE[unsigned(type)];
+            const auto vulkan_type = TBL_VK_DESC_TYPE[unsigned(type)];
             const std::uint32_t slot = desc.value_or<std::uint32_t>("slot", next_slots[unsigned(binding_type)]);
             const std::uint32_t desc_count = desc.value_or<std::uint32_t>("count", 1);
             def_binding = binding + 1;
@@ -63,7 +65,7 @@ bool PipelineLayout::create(const uxs::db::value& config) {
                 .binding = binding,
                 .descriptorType = vulkan_type,
                 .descriptorCount = desc_count,
-                .stageFlags = VkShaderStageFlags(visibility),
+                .stageFlags = VkShaderStageFlags(TBL_VK_SHADER_STAGE[unsigned(visibility)]),
             });
 
             auto desc_counts_it = std::ranges::find_if(

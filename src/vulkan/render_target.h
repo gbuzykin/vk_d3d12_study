@@ -48,6 +48,7 @@ class RenderTarget final : public util::ref_counter, public IRenderTarget {
     util::ref_ptr<FrameImageProvider> frame_image_provider_;
     bool use_depth_ = false;
     VkExtent2D image_extent_{};
+    VkFormat image_format_{};
     VkFormat depth_stencil_format_{VK_FORMAT_D16_UNORM};
     VkRenderPass render_pass_{VK_NULL_HANDLE};
     RenderTargetResult render_target_status_{RenderTargetResult::SUCCESS};

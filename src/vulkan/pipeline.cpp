@@ -7,6 +7,8 @@
 #include "tables.h"
 #include "vulkan_logger.h"
 
+#include "rel/tables.h"
+
 using namespace app3d;
 using namespace app3d::rel;
 using namespace app3d::rel::vulkan;
@@ -32,9 +34,10 @@ bool Pipeline::create(std::span<IShaderModule* const> shader_modules, const uxs:
     for (const auto& module : shader_stages.as_array()) {
         const std::uint32_t index = module.value_or<std::uint32_t>("module_index", def_module_index++);
         if (index >= shader_modules.size()) { throw uxs::db::database_error("shader module index out of range"); }
+        const auto shader_stage = parseShaderStage(module.value("stage").as_string_view());
         shader_stage_create_infos.emplace_back(VkPipelineShaderStageCreateInfo{
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-            .stage = parseShaderStage(module.value("stage").as_string_view()),
+            .stage = TBL_VK_SHADER_STAGE[unsigned(shader_stage)],
             .module = static_cast<ShaderModule&>(*shader_modules[index]).getHandle(),
             .pName = module.value_or<const char*>("entry", "main"),
         });
@@ -66,15 +69,15 @@ bool Pipeline::create(std::span<IShaderModule* const> shader_modules, const uxs:
             def_location = location + 1;
 
             const auto format = parseFormat(attribute.value("format").as_string_view());
-            const auto attribute_size_alignment = getFormatSizeAlignment(format);
-            def_offset = align_up(def_offset, attribute_size_alignment.second);
-            max_alignment = std::max(attribute_size_alignment.second, max_alignment);
+            const std::uint32_t attribute_alignment = TBL_FORMAT_ALIGNMENT[unsigned(format)];
+            def_offset = align_up(def_offset, attribute_alignment);
+            max_alignment = std::max(attribute_alignment, max_alignment);
 
             const std::uint32_t offset = attribute.value_or<std::uint32_t>("offset", def_offset);
-            def_offset = offset + attribute_size_alignment.first;
+            def_offset = offset + TBL_FORMAT_SIZE[unsigned(format)];
 
             vertex_attribute_descriptions.emplace_back(VkVertexInputAttributeDescription{
-                .location = location, .binding = slot, .format = format, .offset = offset});
+                .location = location, .binding = slot, .format = TBL_VK_FORMAT[unsigned(format)], .offset = offset});
         }
 
         const std::uint32_t stride = layout.value_or<std::uint32_t>("stride", align_up(def_offset, max_alignment));
@@ -95,9 +98,11 @@ bool Pipeline::create(std::span<IShaderModule* const> shader_modules, const uxs:
         .pVertexAttributeDescriptions = vertex_attribute_descriptions.data(),
     };
 
+    const auto topology = parsePrimitiveTopology(config.value_or<std::string_view>("primitive_topology", "TRIANGLES"));
+
     const VkPipelineInputAssemblyStateCreateInfo input_assembly_state_create_info{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-        .topology = parsePrimitiveTopology(config.value_or<std::string_view>("primitive_topology", "TRIANGLES")),
+        .topology = TBL_VK_PRIMITIVE_TOPOLOGY[unsigned(topology)],
         .primitiveRestartEnable = VK_FALSE,
     };
 
