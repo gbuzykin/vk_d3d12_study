@@ -3,7 +3,6 @@
 #include "rel/win_desc.h"
 
 #include <memory>
-#include <string>
 
 namespace app3d {
 
@@ -40,7 +39,7 @@ class MainWindow {
 
     rel::WindowDescriptor getWindowDescriptor() const;
 
-    bool createWindow(const std::string& title, std::uint32_t width, std::uint32_t height);
+    bool createWindow(const char* title, std::uint32_t width, std::uint32_t height);
     void showWindow();
     void terminate(int ret_code) { terminate_ = true, ret_code_ = ret_code; }
     int mainLoop();

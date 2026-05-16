@@ -1,13 +1,13 @@
 #pragma once
 
+#include "rel/data_blob.h"
 #include "rel/win_desc.h"
+#include "util/ref_counter.h"
 #include "util/ref_ptr.h"
 
 #include <uxs/db/value.h>
 
 #include <limits>
-#include <span>
-#include <string_view>
 
 #if defined(WIN32)
 #    define APP3D_ENTRY_EXPORT extern "C" __declspec(dllexport)
@@ -151,7 +151,7 @@ struct IDevice {
     virtual util::ref_counter& getRefCounter() = 0;
     virtual bool waitDevice() = 0;
     virtual util::ref_ptr<ISwapChain> createSwapChain(ISurface& surface, const uxs::db::value& opts) = 0;
-    virtual util::ref_ptr<IShaderModule> createShaderModule(std::span<const std::uint32_t> source) = 0;
+    virtual util::ref_ptr<IShaderModule> createShaderModule(DataBlob bytecode) = 0;
     virtual util::ref_ptr<IPipelineLayout> createPipelineLayout(const uxs::db::value& config) = 0;
     virtual util::ref_ptr<IPipeline> createPipeline(IRenderTarget& render_target, IPipelineLayout& pipeline_layout,
                                                     std::span<IShaderModule* const> shader_modules,
@@ -170,6 +170,8 @@ struct IRenderingDriver {
     virtual bool isSuitablePhysicalDevice(std::uint32_t device_index, const uxs::db::value& caps) const = 0;
     virtual util::ref_ptr<ISurface> createSurface(const WindowDescriptor& win_desc) = 0;
     virtual util::ref_ptr<IDevice> createDevice(std::uint32_t device_index, const uxs::db::value& caps) = 0;
+    virtual DataBlob compileShader(const DataBlob& source_text, const uxs::db::value& args,
+                                   DataBlob& compiler_output) = 0;
 };
 
 // Registered rendering driver descriptor
@@ -181,22 +183,3 @@ struct DriverDesc {
 using GetDriverDescriptorFuncPtr = const DriverDesc* (*)();
 
 }  // namespace app3d::rel
-
-namespace app3d::util {
-
-template<typename T>
-concept has_get_ref_counter_method = requires(T p) { p.getRefCounter(); };
-
-template<typename T>
-    requires(!has_ref_method<T> && has_get_ref_counter_method<T>)
-struct ref_inc<T> {
-    void operator()(T& p) const { p.getRefCounter().ref(); }
-};
-
-template<typename T>
-    requires(!has_unref_method<T> && has_get_ref_counter_method<T>)
-struct ref_dec<T> {
-    void operator()(T& p) const { p.getRefCounter().unref(); }
-};
-
-}  // namespace app3d::util

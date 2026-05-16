@@ -15,11 +15,11 @@ ShaderModule::ShaderModule(Device& device) : device_(util::not_null{&device}) {}
 
 ShaderModule::~ShaderModule() { ObjectDestroyer<VkShaderModule>::destroy(~*device_, shader_module_); }
 
-bool ShaderModule::create(std::span<const std::uint32_t> source) {
+bool ShaderModule::create(const DataBlob& bytecode) {
     const VkShaderModuleCreateInfo create_info{
         .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = source.size() * sizeof(std::uint32_t),
-        .pCode = source.data(),
+        .codeSize = bytecode.getSize(),
+        .pCode = reinterpret_cast<const std::uint32_t*>(bytecode.getData()),
     };
 
     VkResult result = vkCreateShaderModule(~*device_, &create_info, nullptr, &shader_module_);

@@ -13,7 +13,7 @@ class ShaderModule final : public util::ref_counter, public IShaderModule {
     explicit ShaderModule(Device& device);
     ~ShaderModule() override;
 
-    bool create(std::span<const std::uint32_t> source);
+    bool create(const DataBlob& bytecode);
 
     VkShaderModule operator~() { return shader_module_; }
 

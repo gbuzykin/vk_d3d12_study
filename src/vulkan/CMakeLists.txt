@@ -7,7 +7,7 @@ file(GLOB_RECURSE REL_VULKAN_SRC_FILES *.h;*.cpp)
 add_library(app3d-rel-vulkan SHARED ${REL_VULKAN_SRC_FILES})
 
 target_include_directories(app3d-rel-vulkan PRIVATE $ENV{VULKAN_SDK}/include)
-target_link_libraries(app3d-rel-vulkan PRIVATE app3d-common
+target_link_libraries(app3d-rel-vulkan PRIVATE app3d-rel
                                                GPUOpen::VulkanMemoryAllocator)
 
 if(WIN32)

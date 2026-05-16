@@ -1,11 +1,16 @@
 #pragma once
 
 #include "not_null.h"
-#include "ref_counter.h"
 
 #include <type_traits>
 
 namespace app3d::util {
+
+template<typename T>
+struct ref_inc;
+
+template<typename T>
+struct ref_dec;
 
 template<typename T>
 class ref_ptr {
@@ -49,6 +54,11 @@ class ref_ptr {
     T* get() const noexcept { return p_; }
     T* operator->() const noexcept { return p_; }
     T& operator*() const noexcept { return *p_; }
+
+    T** reset_and_get_address() noexcept {
+        ref_ptr<T>().swap(*this);
+        return &p_;
+    }
 
     T* release() noexcept {
         T* p = p_;
@@ -126,6 +136,51 @@ template<typename T, typename... Args>
 ref_ptr<T> make_new(Args&&... args) {
     return not_null{::new T(std::forward<Args>(args)...)};
 }
+
+template<typename T>
+concept has_ref_unref_methods = requires(T p) {
+    p.ref();
+    p.unref();
+};
+
+template<has_ref_unref_methods T>
+struct ref_inc<T> {
+    void operator()(T& p) const { p.ref(); }
+};
+
+template<has_ref_unref_methods T>
+struct ref_dec<T> {
+    void operator()(T& p) const { p.unref(); }
+};
+
+template<typename T>
+concept has_get_ref_counter_method = !has_ref_unref_methods<T> && requires(T p) { p.getRefCounter(); };
+
+template<has_get_ref_counter_method T>
+struct ref_inc<T> {
+    void operator()(T& p) const { p.getRefCounter().ref(); }
+};
+
+template<has_get_ref_counter_method T>
+struct ref_dec<T> {
+    void operator()(T& p) const { p.getRefCounter().unref(); }
+};
+
+template<typename T>
+concept has_addref_release_methods = requires(T p) {
+    p.AddRef();
+    p.Release();
+};
+
+template<has_addref_release_methods T>
+struct ref_inc<T> {
+    void operator()(T& p) const { p.AddRef(); }
+};
+
+template<has_addref_release_methods T>
+struct ref_dec<T> {
+    void operator()(T& p) const { p.Release(); }
+};
 
 }  // namespace app3d::util
 

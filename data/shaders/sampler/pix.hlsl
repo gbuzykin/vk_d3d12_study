@@ -1,6 +1,6 @@
 struct FragmentIn {
     float4 pos_h : SV_POSITION;
-    [[vk::location(0)]] float2 texcoord : TEXCOORD;
+    location(0) float2 texcoord : TEXCOORD;
 };
 
 Texture2D tex2D : register(t0);

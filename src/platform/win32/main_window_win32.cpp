@@ -34,7 +34,7 @@ class MainWindow::Implementation {
     Implementation(MainWindow& main_window);
     ~Implementation();
 
-    bool createWindow(const std::string& title, std::uint32_t width, std::uint32_t height);
+    bool createWindow(const char* title, std::uint32_t width, std::uint32_t height);
     void showWindow();
     int mainLoop();
 
@@ -88,7 +88,7 @@ MainWindow::Implementation::~Implementation() {
     if (hinstance_) { ::UnregisterClassW(L"App3D Window Class", hinstance_); }
 }
 
-bool MainWindow::Implementation::createWindow(const std::string& title, std::uint32_t width, std::uint32_t height) {
+bool MainWindow::Implementation::createWindow(const char* title, std::uint32_t width, std::uint32_t height) {
     HINSTANCE hinstance = ::GetModuleHandleW(NULL);
     const wchar_t* window_class_name = L"App3D Window Class";
     WNDCLASSEXW window_class = {
@@ -291,7 +291,7 @@ rel::WindowDescriptor MainWindow::getWindowDescriptor() const {
     return win_desc;
 }
 
-bool MainWindow::createWindow(const std::string& title, std::uint32_t width, std::uint32_t height) {
+bool MainWindow::createWindow(const char* title, std::uint32_t width, std::uint32_t height) {
     return impl_->createWindow(title, width, height);
 }
 
