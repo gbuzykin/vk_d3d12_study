@@ -1,10 +1,6 @@
 #pragma once
 
-#include "vulkan_api.h"
-
-#include "interfaces/i_rendering_driver.h"
-
-#include <vector>
+#include "dev_queue.h"
 
 namespace app3d::rel::vulkan {
 
@@ -30,6 +26,7 @@ class Surface final : public util::ref_counter, public ISurface {
     bool checkAndSelectSurfaceFeatures();
 
     VkSurfaceKHR operator~() { return surface_; }
+    DevQueue& getPresentQueue() { return present_queue_; }
 
     //@{ ISurface
     util::ref_counter& getRefCounter() override { return *this; }
@@ -45,6 +42,7 @@ class Surface final : public util::ref_counter, public ISurface {
     VkImageUsageFlags image_usage_{};
     VkSurfaceFormatKHR selected_format_{};
     VkPresentModeKHR selected_present_mode_{};
+    DevQueue present_queue_;
 };
 
 }  // namespace app3d::rel::vulkan
