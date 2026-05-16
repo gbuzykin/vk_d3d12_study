@@ -27,9 +27,8 @@ class Texture final : public FrameImageProvider, public ITexture {
     VkImageLayout getImageLayout() const override;
     void imageBarrierBefore(CommandBuffer& command_buffer, std::uint32_t image_index) override;
     void imageBarrierAfter(CommandBuffer& command_buffer, std::uint32_t image_index) override;
-    RenderTargetResult acquireFrameImage(std::uint32_t n_frame, std::uint64_t timeout,
-                                         std::uint32_t& image_index) override;
-    RenderTargetResult submitFrameImage(std::uint32_t n_frame, std::uint32_t image_index, CommandBuffer& command_buffer,
+    RenderTargetResult acquireFrameImage(std::uint64_t timeout, std::uint32_t& image_index) override;
+    RenderTargetResult submitFrameImage(std::uint32_t image_index, CommandBuffer& command_buffer,
                                         VkFence fence) override;
     void removeRenderTarget(RenderTarget* render_target) override {}
     //@}

@@ -105,13 +105,12 @@ void Texture::imageBarrierBefore(CommandBuffer& command_buffer, std::uint32_t im
 
 void Texture::imageBarrierAfter(CommandBuffer& command_buffer, std::uint32_t image_index) {}
 
-RenderTargetResult Texture::acquireFrameImage(std::uint32_t n_frame, std::uint64_t timeout, std::uint32_t& image_index) {
+RenderTargetResult Texture::acquireFrameImage(std::uint64_t timeout, std::uint32_t& image_index) {
     image_index = 0;
     return RenderTargetResult::SUCCESS;
 }
 
-RenderTargetResult Texture::submitFrameImage(std::uint32_t n_frame, std::uint32_t image_index,
-                                             CommandBuffer& command_buffer, VkFence fence) {
+RenderTargetResult Texture::submitFrameImage(std::uint32_t image_index, CommandBuffer& command_buffer, VkFence fence) {
     if (!device_->getGraphicsQueue().submitCommandBuffers({}, std::array{command_buffer.getHandle()}, {}, fence)) {
         return RenderTargetResult::FAILED;
     }
